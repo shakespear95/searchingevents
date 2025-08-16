@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Finder - The Alternative</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body>
+
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="spinner"></div>
+        <p>Searching for amazing events... Please wait.</p>
+    </div>
+
+    <header class="navbar">
+        <div class="navbar-left">
+            <a href="#" class="logo">
+                <i class="fas fa-ticket-alt"></i> EventFinder
+            </a>
+        </div>
+        <nav class="navbar-right">
+            <ul>
+                <li><a href="#">Browse events</a></li>
+                <li><a href="#">Get help</a></li>
+                <li>
+                    <button id="openSearchBtn" class="search-btn">
+                        <i class="fas fa-search"></i> Search
+                    </button>
+                </li>
+                <li id="authButtons">
+                    <button id="loginBtn" class="primary-btn small-btn">Login</button>
+                    <button id="signupBtn" class="primary-btn small-btn">Sign Up</button>
+                </li>
+                <li id="userDropdown" style="display: none;">
+                    <button class="search-btn"><i class="fas fa-user-circle"></i> Hi, <span id="usernameDisplay">User</span></button>
+                    <button id="logoutBtn" class="primary-btn small-btn">Logout</button>
+                </li>
+                </ul>
+        </nav>
+        <button class="menu-toggle" id="menuToggle">
+            <i class="fas fa-bars"></i>
+        </button>
+    </header>
+
+    <div class="mobile-menu" id="mobileMenu">
+        <ul>
+            <li><a href="#">Browse events</a></li>
+            <li><a href="#">Get help</a></li>
+            <li><button id="openSearchBtnMobile" class="search-btn-mobile"><i class="fas fa-search"></i> Search Events</button></li>
+            <li><button class="close-mobile-menu" id="closeMobileMenu"><i class="fas fa-times"></i> Close</button></li>
+        </ul>
+    </div>
+
+    <section class="hero">
+        <div class="hero-content">
+            <h1>WELCOME TO THE ALTERNATIVE</h1>
+            <p>Incredible live shows. Upfront pricing. Relevant recommendations. <br> EventFinder makes finding events easy.</p>
+            <button id="heroSearchBtn" class="primary-btn">SEARCH EVENTS</button>
+        </div>
+    </section>
+
+    <section class="featured-events-section">
+        <div class="container">
+            <h2>Featured Events</h2>
+            <div id="featuredEventsContainer" class="event-cards-grid">
+                <p class="loading-message">Loading featured events...</p>
+            </div>
+        </div>
+    </section>
+
+    <div id="searchModal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close-btn" id="closeModalBtn"><i class="fas fa-times"></i></button>
+            <h2>Find Your Next Event</h2>
+            <form id="eventForm">
+                <label for="location">Location:</label>
+                <input type="text" id="location" name="location" placeholder="e.g., Berlin or Near Brandenburg Gate" required>
+
+                <label for="activity_type">Activity Type:</label>
+                <select id="activity_type" name="activity_type">
+                    <option value="Any">Any</option>
+                    <option value="Music">Music</option>
+                    <option value="Food">Food</option>
+                    <option value="Workshop">Workshop</option>
+                    <option value="Outdoor">Outdoor</option>
+                    <option value="Art">Art & Culture</option>
+                    <option value="Sports">Sports</option>
+                </select>
+
+                <label for="timeframe">Timeframe:</label>
+                <select id="timeframe" name="timeframe">
+                    <option value="Today">Today</option>
+                    <option value="Tomorrow">Tomorrow</option>
+                    <option value="This Weekend">This Weekend</option>
+                    <option value="Next Week">Next Week</option>
+                    <option value="This Month">This Month</option>
+                </select>
+
+                <label for="radius">Radius (km, optional):</label>
+                <input type="number" id="radius" name="radius" min="1" placeholder="e.g., 50">
+
+                <label for="keywords">Keywords (optional):</label>
+                <input type="text" id="keywords" name="keywords" placeholder="e.g., jazz, beginner yoga">
+
+                <label for="email">Email for results (optional):</label>
+                <input type="email" id="email" name="email" placeholder="youremail@example.com">
+
+                <button type="submit" class="submit-btn">Search Events</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="loginSignupModal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close-btn" id="closeLoginSignupModalBtn"><i class="fas fa-times"></i></button>
+            <h2 id="loginSignupTitle">Login</h2>
+            <form id="loginForm" style="display: block;">
+                <label for="loginUsername">Username:</label>
+                <input type="text" id="loginUsername" name="username" required>
+                <label for="loginPassword">Password:</label>
+                <input type="password" id="loginPassword" name="password" required>
+                <button type="submit" class="submit-btn">Login</button>
+                <p class="form-switch-text">Don't have an account? <a href="#" id="showSignup">Sign Up</a></p>
+            </form>
+            <form id="signupForm" style="display: none;">
+                <label for="signupUsername">Username:</label>
+                <input type="text" id="signupUsername" name="username" required>
+                <label for="signupEmail">Email (optional):</label>
+                <input type="email" id="signupEmail" name="email">
+                <label for="signupPassword">Password:</label>
+                <input type="password" id="signupPassword" name="password" required>
+                <label for="confirmPassword">Confirm Password:</label>
+                <input type="password" id="confirmPassword" name="confirmPassword" required>
+                <button type="submit" class="submit-btn">Sign Up</button>
+                <p class="form-switch-text">Already have an account? <a href="#" id="showLogin">Login</a></p>
+            </form>
+            <p id="authMessage" style="color: red; text-align: center; margin-top: 10px;"></p>
+        </div>
+    </div>
+    <section class="results-section">
+        <div class="container">
+            <h2>Search Results</h2>
+            <div id="results" class="event-cards-grid">
+                <p class="no-results-message">Your search results will appear here.</p>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section about">
+                    <h3>EventFinder</h3>
+                    <p>Discover incredible live events near you. Upfront pricing, relevant recommendations, and easy access to unforgettable experiences.</p>
+                </div>
+                <div class="footer-section links">
+                    <h3>Quick Links</h3>
+                    <ul>
+                        <li><a href="#">Browse Events</a></li>
+                        <li><a href="#">About Us</a></li>
+                        <li><a href="#">Contact</a></li>
+                        <li><a href="#">Help</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section social">
+                    <h3>Connect With Us</h3>
+                    <div class="social-icons">
+                        <a href="#"><i class="fab fa-facebook-f"></i></a>
+                        <a href="#"><i class="fab fa-twitter"></i></a>
+                        <a href="#"><i class="fab fa-instagram"></i></a>
+                        <a href="#"><i class="fab fa-linkedin-in"></i></a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                &copy; 2025 EventFinder. All rights reserved.
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
