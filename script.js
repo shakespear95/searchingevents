@@ -98,33 +98,33 @@ async function loadFeaturedEvents() {
 
 // --- Event Listeners for UI interaction ---
 
-// Open search modal from desktop navbar (Q Search)
-const qSearchButton = document.querySelector('.navbar-right .search-btn');
-if (qSearchButton) { // Check if element exists before adding listener
-    qSearchButton.addEventListener('click', () => {
+// Function to check login status before opening search modal
+function handleSearchClick() {
+    if (isUserLoggedIn()) {
         searchModal.style.display = 'flex';
-    });
+    } else {
+        loginSignupModal.style.display = 'flex';
+        loginSignupTitle.textContent = 'Login';
+        loginForm.style.display = 'block';
+        signupForm.style.display = 'none';
+        authMessage.textContent = 'Please log in to search for events.';
+        authMessage.style.color = 'red';
+    }
 }
 
-// Open search modal from desktop navbar (text button)
+// Update existing listeners to use the login check
 if (openSearchBtn) {
-    openSearchBtn.addEventListener('click', () => {
-        searchModal.style.display = 'flex'; // Use flex for centering
-    });
+    openSearchBtn.addEventListener('click', handleSearchClick);
 }
 
-// Open search modal from hero section button
 if (heroSearchBtn) {
-    heroSearchBtn.addEventListener('click', () => {
-        searchModal.style.display = 'flex';
-    });
+    heroSearchBtn.addEventListener('click', handleSearchClick);
 }
 
-// Open search modal from mobile menu
 if (openSearchBtnMobile) {
     openSearchBtnMobile.addEventListener('click', () => {
         mobileMenu.classList.remove('open');
-        searchModal.style.display = 'flex';
+        handleSearchClick();
     });
 }
 
@@ -191,6 +191,11 @@ function getUsernameFromToken(token) {
     } catch (e) {
         return 'User';
     }
+}
+
+function isUserLoggedIn() {
+    const token = getToken();
+    return !!token;
 }
 
 function updateAuthUI() {
@@ -348,18 +353,17 @@ eventForm.addEventListener("submit", async function (e) {
     showLoading();
 
     try {
-        const headers = { "Content-Type": "application/json" }; // Added headers here
+        const headers = { "Content-Type": "application/json" };
 
         // NEW: Get JWT and add to headers if user is logged in
-        const jwtToken = getToken(); // Assuming getToken() retrieves the JWT from localStorage
-        if (jwtToken) { //
-            headers["Authorization"] = `Bearer ${jwtToken}`; // Add Authorization header
+        const jwtToken = getToken();
+        if (jwtToken) {
+            headers["Authorization"] = `Bearer ${jwtToken}`;
         }
-        // END NEW
 
         const response = await fetch(n8nWebhookUrl, {
             method: "POST",
-            headers: headers, // Use the updated headers object
+            headers: headers,
             body: JSON.stringify(data)
         });
 
@@ -381,7 +385,7 @@ eventForm.addEventListener("submit", async function (e) {
 
     } catch (error) {
         console.error("Error sending data to n8n webhook:", error);
-        resultsDiv.innerHTML = '<p class="error-error">An error occurred while fetching events. Please try again later. If the search takes a long time, results might be sent to your email.</p>'; // Corrected message type to error-message
+        resultsDiv.innerHTML = '<p class="error-error">An error occurred while fetching events. Please try again later. If the search takes a long time, results might be sent to your email.</p>';
     } finally {
         // Hide loading overlay AFTER the fetch call completes (or errors)
         hideLoading();
