@@ -33,7 +33,8 @@ const showLoginLink = document.getElementById('showLogin');
 const showSignupLink = document.getElementById('showSignup');
 const authMessage = document.getElementById('authMessage');
 
-// AWS Backend API Base URL (YOU WILL NEED TO REPLACE THIS with your ap-south-1 API Gateway Invoke URL)
+// AWS Backend API Base URL
+// This URL now points to the API Gateway with LLM integration
 const AWS_API_BASE_URL = "https://qk3jiyk1e8.execute-api.ap-south-1.amazonaws.com/prod";
 
 // --- Helper function to render event cards (REUSABLE) ---
@@ -346,8 +347,8 @@ eventForm.addEventListener("submit", async function (e) {
     // Close the modal after submission (good UX)
     searchModal.style.display = 'none';
 
-    // *** IMPORTANT: Replace with your actual n8n Webhook URL ***
-    const n8nWebhookUrl = "https://winwinglobal.app.n8n.cloud/webhook/event-search";
+    // Use AWS API endpoint for event search
+    const eventSearchUrl = `${AWS_API_BASE_URL}/search-events`;
 
     // Show loading overlay BEFORE sending the request
     showLoading();
@@ -361,7 +362,7 @@ eventForm.addEventListener("submit", async function (e) {
             headers["Authorization"] = `Bearer ${jwtToken}`;
         }
 
-        const response = await fetch(n8nWebhookUrl, {
+        const response = await fetch(eventSearchUrl, {
             method: "POST",
             headers: headers,
             body: JSON.stringify(data)
@@ -369,14 +370,14 @@ eventForm.addEventListener("submit", async function (e) {
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`HTTP error sending to n8n webhook: ${response.status}, message: ${errorText}`);
+            throw new Error(`HTTP error sending to AWS API: ${response.status}, message: ${errorText}`);
         }
 
         const result = await response.json();
 
         // Handle the response and display results or a message
-        if (result && result.html) { // Assuming n8n sends back the HTML directly
-            resultsDiv.innerHTML = result.html; // Directly render the HTML from n8n
+        if (result && result.events) { // AWS API returns events array
+            renderEventCards(resultsDiv, result.events, "No events found for your search criteria.");
         } else if (result && result.message) {
             resultsDiv.innerHTML = `<p class="no-results-message">${result.message}</p>`;
         } else {
@@ -384,7 +385,7 @@ eventForm.addEventListener("submit", async function (e) {
         }
 
     } catch (error) {
-        console.error("Error sending data to n8n webhook:", error);
+        console.error("Error sending data to AWS API:", error);
         resultsDiv.innerHTML = '<p class="error-error">An error occurred while fetching events. Please try again later. If the search takes a long time, results might be sent to your email.</p>';
     } finally {
         // Hide loading overlay AFTER the fetch call completes (or errors)
