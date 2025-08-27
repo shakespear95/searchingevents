@@ -359,6 +359,9 @@ signupForm.addEventListener('submit', async (e) => {
 
 // Function to load and display search history for logged-in user
 async function loadSearchHistory() {
+    console.log('DEBUG: loadSearchHistory called');
+    console.log('DEBUG: currentUserId =', currentUserId);
+    
     if (!currentUserId) {
         console.log('No user ID available, hiding search history');
         searchHistorySection.style.display = 'none';
@@ -367,25 +370,35 @@ async function loadSearchHistory() {
 
     try {
         console.log(`Loading search history for user: ${currentUserId}`);
+        const searchHistoryUrl = `${AWS_API_BASE_URL}/search-history?userId=${encodeURIComponent(currentUserId)}`;
+        console.log('DEBUG: Fetching from URL:', searchHistoryUrl);
         
-        const response = await fetch(`${AWS_API_BASE_URL}/get-search-history?userId=${encodeURIComponent(currentUserId)}`);
+        const response = await fetch(searchHistoryUrl);
+        console.log('DEBUG: Response status:', response.status);
+        console.log('DEBUG: Response ok:', response.ok);
         
         if (!response.ok) {
+            const errorText = await response.text();
+            console.log('DEBUG: Error response text:', errorText);
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
         const data = await response.json();
+        console.log('DEBUG: Search history data received:', data);
         
         if (data.searchHistory && data.searchHistory.length > 0) {
+            console.log('DEBUG: Displaying', data.searchHistory.length, 'search history items');
             displaySearchHistoryTabs(data.searchHistory);
             searchHistorySection.style.display = 'block';
         } else {
+            console.log('DEBUG: No search history found, showing empty message');
             displayEmptySearchHistory();
             searchHistorySection.style.display = 'block';
         }
         
     } catch (error) {
         console.error('Error loading search history:', error);
+        console.log('DEBUG: Hiding search history section due to error');
         searchHistorySection.style.display = 'none';
     }
 }
@@ -441,7 +454,7 @@ async function loadSearchDetails(searchId, tabElement) {
         
         console.log(`Loading search details for: ${searchId}`);
         
-        const response = await fetch(`${AWS_API_BASE_URL}/get-search-details?searchId=${encodeURIComponent(searchId)}&userId=${encodeURIComponent(currentUserId)}`);
+        const response = await fetch(`${AWS_API_BASE_URL}/search-details?searchId=${encodeURIComponent(searchId)}&userId=${encodeURIComponent(currentUserId)}`);
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -533,6 +546,11 @@ eventForm.addEventListener("submit", async function (e) {
             resultsDiv.innerHTML = '<p class="no-results-message">Search request sent! Please check your email for results if provided, or try a different search.</p>';
         }
 
+        // Reload search history to show the new search as a tab (if user is logged in)
+        if (currentUserId) {
+            loadSearchHistory();
+        }
+
     } catch (error) {
         console.error("Error sending data to AWS API:", error);
         resultsDiv.innerHTML = '<p class="error-error">An error occurred while fetching events. Please try again later. If the search takes a long time, results might be sent to your email.</p>';
@@ -553,10 +571,17 @@ loadFeaturedEvents();
 updateAuthUI();
 
 // If user is already logged in (token exists), set currentUserId and load search history
+console.log('DEBUG: Checking if user is logged in on page load');
+console.log('DEBUG: isUserLoggedIn() =', isUserLoggedIn());
+
 if (isUserLoggedIn()) {
     const token = getToken();
+    console.log('DEBUG: Token found:', !!token);
     currentUserId = getUsernameFromToken(token);
+    console.log('DEBUG: Extracted currentUserId =', currentUserId);
+    
     if (currentUserId) {
+        console.log('DEBUG: Loading search history on page init');
         loadSearchHistory();
     }
 }
