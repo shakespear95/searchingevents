@@ -83,3 +83,52 @@ Open `index.html` in a web browser or serve through a local HTTP server.
 
 ### Browser Testing
 Test responsive design at different viewport sizes, particularly mobile breakpoints. Verify authentication flow and search functionality with network tab open to monitor API calls.
+
+## Recent Development Work
+
+### Backend Lambda Function Updates (AWS Migration)
+
+#### What We've Done:
+1. **Migrated from n8n to AWS Lambda**: Created a new backend search function that uses AWS services
+2. **Implemented Dual-LLM Architecture**: 
+   - **Perplexity API**: For real-time web search and current event data
+   - **Claude (Anthropic)**: For processing and formatting search results into structured JSON
+3. **AWS Secrets Manager Integration**: Secure API key storage and retrieval
+4. **Error Handling & Validation**: Comprehensive error handling for LLM responses and JSON parsing
+5. **CORS Configuration**: Proper headers for frontend-backend communication
+
+#### Key Files Created:
+- `search-events.js`: Original Lambda function implementation (incomplete)
+- `search-events-fixed.txt`: Fixed version with proper AWS Secrets Manager integration
+
+#### Architecture Flow:
+1. Frontend sends search request to AWS API Gateway
+2. Lambda function retrieves API keys from AWS Secrets Manager
+3. Generates optimized search prompt for Perplexity
+4. Calls Perplexity API for real-time event data
+5. Uses Claude to process and structure the raw results into JSON format
+6. Returns formatted event data to frontend
+
+### Remaining Issues & Next Steps:
+
+#### Backend Issues:
+1. **Deploy Fixed Lambda Function**: The corrected code in `search-events-fixed.txt` needs to be deployed to AWS Lambda
+2. **Test End-to-End Flow**: Verify the complete search pipeline works from frontend to backend
+3. **Error Response Handling**: Ensure frontend gracefully handles various error scenarios
+4. **Performance Optimization**: Monitor Lambda cold starts and response times
+
+#### Frontend Issues:
+1. **API Integration Testing**: Test with real AWS Lambda endpoint once deployed
+2. **Search Result Validation**: Ensure frontend can handle the JSON response format from backend
+3. **Loading State Management**: Verify loading indicators work properly during API calls
+4. **Error Message Display**: Test error handling and user feedback for failed searches
+
+#### Authentication Issues:
+1. **JWT Token Integration**: Ensure search requests include proper authorization headers
+2. **Session Management**: Test login/logout flow with search functionality
+
+#### Testing & Quality Assurance:
+1. **Cross-Browser Testing**: Test search functionality across different browsers
+2. **Mobile Responsiveness**: Verify search modal and results display properly on mobile
+3. **API Rate Limiting**: Test behavior when API rate limits are reached
+4. **Network Error Handling**: Test offline/poor connectivity scenarios

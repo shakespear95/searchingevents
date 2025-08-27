@@ -1,0 +1,195 @@
+// search-events.js
+const Anthropic = require('@anthropic-ai/sdk');
+const axios = require('axios');
+const AWS = require('aws-sdk');
+
+const secretsManager = new AWS.SecretsManager();
+let clients; // An object to hold all initialized API clients
+
+// Function to fetch all API keys from Secrets Manager
+async function getApiKeys() {
+    const secretName = 'event-finder-llm-keys';
+    try {
+        const data = await secretsManager.getSecretValue({ SecretId: secretName }).promise();
+        if ('SecretString' in data) {
+            return JSON.parse(data.SecretString);
+        }
+        throw new Error('SecretString not found.');
+    } catch (err) {
+        console.error("Failed to retrieve secret:", err);
+        throw err;
+    }
+}
+
+// Function to call a single LLM and handle its response
+async function callLLM(llmClient, modelName, prompt) {
+    try {
+        let rawResponse;
+        if (llmClient instanceof Anthropic) {
+            rawResponse = await llmClient.messages.create({
+                model: modelName,
+                max_tokens: 2048,
+                messages: [{ role: "user", content: prompt }],
+            });
+            
+            // Add validation here
+            if (rawResponse && rawResponse.content && rawResponse.content[0] && rawResponse.content[0].text) {
+                return rawResponse.content[0].text;
+            } else {
+                console.error('Invalid Claude response structure:', JSON.stringify(rawResponse));
+                throw new Error('Invalid response structure from Claude');
+            }
+        }
+    } catch (error) {
+        console.error(`Error calling ${modelName}:`, error);
+        throw error;
+    }
+}
+
+// Function to handle Perplexity API call directly with Axios
+async function getRawEventsFromPerplexity(apiKey, prompt) {
+    try {
+        const response = await axios.post(
+            'https://api.perplexity.ai/chat/completions',
+            {
+                model: 'pplx-7b-online',
+                messages: [{ role: 'user', content: prompt }],
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                },
+            }
+        );
+        return response.data.choices[0].message.content;
+    } catch (error) {
+        console.error('Error calling Perplexity:', error);
+        return null;
+    }
+}
+
+exports.handler = async (event) => {
+    try {
+        if (!clients) {
+            const apiKeys = await getApiKeys();
+            clients = {
+                anthropic: new Anthropic({ apiKey: apiKeys.claude }),
+                perplexityKey: apiKeys.perplexity,
+            };
+        }
+
+        const searchParams = JSON.parse(event.body);
+        const { location, keywords, timeframe } = searchParams;
+
+        // Step 1: Use Claude to create an optimized prompt for Perplexity
+        const perplexityPrompt = `Find events in "${location}" related to "${keywords}" happening "${timeframe}". 
+            Be concise. Do not add any extra text or conversation.`;
+            
+        console.log('Perplexity prompt:', perplexityPrompt);
+            
+        // Step 2: Call Perplexity's API to get raw, unstructured search results
+        const rawPerplexityResponse = await getRawEventsFromPerplexity(clients.perplexityKey, perplexityPrompt);
+        
+        console.log('Raw Perplexity response:', rawPerplexityResponse);
+        
+        if (!rawPerplexityResponse) {
+             return {
+                statusCode: 200,
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST,OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type'
+                },
+                body: JSON.stringify({ events: [], message: "Perplexity search failed. Please try again." }),
+            };
+        }
+
+        // Step 3: Use Claude to process the raw response and format it into JSON
+        const claudeProcessingPrompt = `I have received the following search results:
+        "${rawPerplexityResponse}"
+        
+        Please extract event information from this text and respond ONLY with a valid JSON array of objects. 
+        Each object must have these exact fields: "name", "description", "date", "location", "price", and "source". 
+        If no events are found, return exactly: []
+        
+        Do not include any explanatory text, just the JSON array.`;
+
+        console.log('Claude processing prompt:', claudeProcessingPrompt);
+
+        const finalFormattedResponse = await callLLM(clients.anthropic, "claude-3-sonnet-20240229", claudeProcessingPrompt);
+        
+        console.log('Claude response:', finalFormattedResponse);
+        
+        // Add validation before parsing
+        if (!finalFormattedResponse || finalFormattedResponse === 'undefined' || finalFormattedResponse.trim() === '') {
+            console.error('Claude returned empty or undefined response');
+            return {
+                statusCode: 200,
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST,OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type'
+                },
+                body: JSON.stringify({ events: [], message: "LLM returned empty response. Please try again." }),
+            };
+        }
+        
+        let events = [];
+        try {
+            // Clean the response before parsing
+            const cleanedResponse = finalFormattedResponse.trim();
+            console.log('Cleaned response for parsing:', cleanedResponse);
+            
+            events = JSON.parse(cleanedResponse);
+            
+            // Validate the parsed result is an array
+            if (!Array.isArray(events)) {
+                console.error('Parsed response is not an array:', events);
+                events = [];
+            }
+            
+        } catch (parseError) {
+            console.error('JSON parsing failed:', parseError);
+            console.error('Raw response from Claude:', finalFormattedResponse);
+            
+            return {
+                statusCode: 200,
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST,OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type'
+                },
+                body: JSON.stringify({ events: [], message: "LLM returned an unparsable response. Please try again." }),
+            };
+        }
+
+        console.log('Final events array:', events);
+
+        return {
+            statusCode: 200,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST,OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type'
+            },
+            body: JSON.stringify({ events: events }),
+        };
+
+    } catch (error) {
+        console.error('LLM search error:', error);
+        let message = 'An internal server error occurred while fetching events.';
+        if (error instanceof SyntaxError) {
+             message = 'The LLM failed to return valid JSON. Please try again.';
+        }
+        return {
+            statusCode: 500,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST,OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type'
+            },
+            body: JSON.stringify({ message: message }),
+        };
+    }
+};

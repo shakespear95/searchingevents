@@ -422,6 +422,62 @@ a:hover {
     color: #888;
 }
 
+/* Search History Section */
+.search-history-section {
+    padding: 30px 0;
+    background-color: var(--secondary-bg);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.search-history-tabs {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 10px 0;
+    margin-bottom: 20px;
+}
+
+.search-history-tab {
+    background: linear-gradient(135deg, var(--gradient-purple-start), var(--gradient-purple-end));
+    border: none;
+    padding: 8px 16px;
+    border-radius: 20px;
+    color: white;
+    font-size: 0.9em;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.3s ease;
+    min-width: fit-content;
+}
+
+.search-history-tab:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(123, 75, 162, 0.3);
+}
+
+.search-history-tab.active {
+    background: linear-gradient(135deg, var(--gradient-blue-start), var(--gradient-blue-end));
+    box-shadow: 0 3px 10px rgba(0, 123, 255, 0.4);
+}
+
+.search-history-tab .tab-date {
+    font-size: 0.8em;
+    opacity: 0.8;
+    display: block;
+}
+
+.search-history-tab .tab-summary {
+    font-weight: 500;
+}
+
+.search-history-empty {
+    text-align: center;
+    color: var(--text-light);
+    opacity: 0.7;
+    padding: 20px;
+    font-style: italic;
+}
+
 /* Results Section */
 .results-section {
     padding: 50px 0;

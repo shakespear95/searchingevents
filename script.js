@@ -33,9 +33,16 @@ const showLoginLink = document.getElementById('showLogin');
 const showSignupLink = document.getElementById('showSignup');
 const authMessage = document.getElementById('authMessage');
 
+// NEW: Search History DOM Elements
+const searchHistorySection = document.getElementById('searchHistorySection');
+const searchHistoryTabs = document.getElementById('searchHistoryTabs');
+
 // AWS Backend API Base URL
 // This URL now points to the API Gateway with LLM integration
 const AWS_API_BASE_URL = "https://qk3jiyk1e8.execute-api.ap-south-1.amazonaws.com/prod";
+
+// Global variable to store current user ID for search history
+let currentUserId = null;
 
 // --- Helper function to render event cards (REUSABLE) ---
 function renderEventCards(containerElement, eventsData, messageIfEmpty) {
@@ -215,12 +222,26 @@ async function handleAuthResponse(response) {
     const data = await response.json();
     if (response.ok) {
         setToken(data.token);
+        
+        // Extract user ID from the response or JWT token
+        if (data.username) {
+            currentUserId = data.username; // Use username as user ID
+        } else {
+            // Fallback: extract username from JWT token
+            currentUserId = getUsernameFromToken(data.token);
+        }
+        
         authMessage.textContent = 'Success! Logging in...';
         authMessage.style.color = 'green';
         setTimeout(() => {
             loginSignupModal.style.display = 'none';
             updateAuthUI();
             authMessage.textContent = ''; // Clear message
+            
+            // Load search history after successful login
+            if (currentUserId) {
+                loadSearchHistory();
+            }
         }, 1000);
     } else {
         authMessage.textContent = data.message || 'Authentication failed.';
@@ -269,7 +290,15 @@ showLoginLink.addEventListener('click', (e) => {
 
 logoutBtn.addEventListener('click', () => {
     removeToken();
+    currentUserId = null; // Clear current user ID
     updateAuthUI();
+    
+    // Hide search history section on logout
+    searchHistorySection.style.display = 'none';
+    
+    // Clear search results
+    resultsDiv.innerHTML = '<p class="no-results-message">Your search results will appear here.</p>';
+    
     // Optionally redirect or refresh page
     // window.location.reload();
 });
@@ -325,6 +354,126 @@ signupForm.addEventListener('submit', async (e) => {
         authMessage.style.color = 'red';
     }
 });
+
+// --- Search History Functions ---
+
+// Function to load and display search history for logged-in user
+async function loadSearchHistory() {
+    if (!currentUserId) {
+        console.log('No user ID available, hiding search history');
+        searchHistorySection.style.display = 'none';
+        return;
+    }
+
+    try {
+        console.log(`Loading search history for user: ${currentUserId}`);
+        
+        const response = await fetch(`${AWS_API_BASE_URL}/get-search-history?userId=${encodeURIComponent(currentUserId)}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        
+        if (data.searchHistory && data.searchHistory.length > 0) {
+            displaySearchHistoryTabs(data.searchHistory);
+            searchHistorySection.style.display = 'block';
+        } else {
+            displayEmptySearchHistory();
+            searchHistorySection.style.display = 'block';
+        }
+        
+    } catch (error) {
+        console.error('Error loading search history:', error);
+        searchHistorySection.style.display = 'none';
+    }
+}
+
+// Function to display search history tabs
+function displaySearchHistoryTabs(searchHistory) {
+    searchHistoryTabs.innerHTML = '';
+    
+    searchHistory.forEach((search, index) => {
+        const searchDate = new Date(search.searchDate);
+        const formattedDate = searchDate.toLocaleDateString();
+        const formattedTime = searchDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        const tabElement = document.createElement('button');
+        tabElement.className = 'search-history-tab';
+        tabElement.setAttribute('data-search-id', search.searchId);
+        
+        tabElement.innerHTML = `
+            <span class="tab-summary">${search.searchSummary}</span>
+            <span class="tab-date">${formattedDate} ${formattedTime}</span>
+        `;
+        
+        // Add click handler to load search results
+        tabElement.addEventListener('click', () => loadSearchDetails(search.searchId, tabElement));
+        
+        searchHistoryTabs.appendChild(tabElement);
+    });
+}
+
+// Function to display empty search history message
+function displayEmptySearchHistory() {
+    searchHistoryTabs.innerHTML = `
+        <div class="search-history-empty">
+            <i class="fas fa-search"></i>
+            <p>No search history yet. Perform your first search to see results here!</p>
+        </div>
+    `;
+}
+
+// Function to load and display details of a specific search
+async function loadSearchDetails(searchId, tabElement) {
+    try {
+        // Remove active class from all tabs
+        document.querySelectorAll('.search-history-tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        
+        // Add active class to clicked tab
+        tabElement.classList.add('active');
+        
+        // Show loading in results
+        resultsDiv.innerHTML = '<p class="loading-message">Loading saved search results...</p>';
+        
+        console.log(`Loading search details for: ${searchId}`);
+        
+        const response = await fetch(`${AWS_API_BASE_URL}/get-search-details?searchId=${encodeURIComponent(searchId)}&userId=${encodeURIComponent(currentUserId)}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const searchDetails = await response.json();
+        
+        // Display the saved search results
+        displaySearchResults(searchDetails.searchResults, searchDetails.searchSummary);
+        
+    } catch (error) {
+        console.error('Error loading search details:', error);
+        resultsDiv.innerHTML = '<p class="error-message">Error loading search results. Please try again.</p>';
+    }
+}
+
+// Function to display search results (handles both new searches and saved searches)
+function displaySearchResults(searchResults, searchSummary = '') {
+    if (searchResults && typeof searchResults === 'string' && searchResults.length > 0) {
+        // For saved searches, searchResults is the raw Perplexity response
+        resultsDiv.innerHTML = `
+            ${searchSummary ? `<h3>Search: ${searchSummary}</h3>` : ''}
+            <div class="events-container">
+                <pre style="white-space: pre-wrap; font-family: Arial, sans-serif; line-height: 1.6; background: var(--secondary-bg); padding: 20px; border-radius: 10px;">
+${searchResults}
+                </pre>
+            </div>
+        `;
+    } else {
+        resultsDiv.innerHTML = '<p class="no-results-message">No search results found.</p>';
+    }
+}
 
 
 // --- Form Submission Logic (Modified for loading indicator) ---
@@ -400,5 +549,14 @@ resultsDiv.innerHTML = '<p class="no-results-message">Your search results will a
 // Load featured events when the page loads
 loadFeaturedEvents();
 
-// Initial UI update for auth status
+// Initial UI update for auth status and search history
 updateAuthUI();
+
+// If user is already logged in (token exists), set currentUserId and load search history
+if (isUserLoggedIn()) {
+    const token = getToken();
+    currentUserId = getUsernameFromToken(token);
+    if (currentUserId) {
+        loadSearchHistory();
+    }
+}
