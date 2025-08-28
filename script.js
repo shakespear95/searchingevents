@@ -20,7 +20,10 @@ console.log('Mobile menu elements found:', {
     mobileMenu: !!mobileMenu,
     closeMobileMenu: !!closeMobileMenu,
     loginBtnMobile: !!loginBtnMobile,
-    signupBtnMobile: !!signupBtnMobile
+    signupBtnMobile: !!signupBtnMobile,
+    loginSignupModal: !!loginSignupModal,
+    loginForm: !!loginForm,
+    signupForm: !!signupForm
 });
 const openSearchBtnMobile = document.getElementById('openSearchBtnMobile');
 
@@ -153,7 +156,10 @@ if (loginBtnMobile) {
     loginBtnMobile.addEventListener('click', () => {
         mobileMenu.classList.remove('open');
         document.body.style.overflow = '';
-        loginModal.style.display = 'block';
+        console.log('Mobile login button clicked');
+        // Show login form in the modal
+        showLogin();
+        loginSignupModal.style.display = 'flex';
     });
 }
 
@@ -162,7 +168,10 @@ if (signupBtnMobile) {
     signupBtnMobile.addEventListener('click', () => {
         mobileMenu.classList.remove('open');
         document.body.style.overflow = '';
-        signupModal.style.display = 'block';
+        console.log('Mobile signup button clicked');
+        // Show signup form in the modal
+        showSignup();
+        loginSignupModal.style.display = 'flex';
     });
 }
 
@@ -334,20 +343,30 @@ closeLoginSignupModalBtn.addEventListener('click', () => {
     authMessage.textContent = '';
 });
 
-showSignupLink.addEventListener('click', (e) => {
-    e.preventDefault();
-    loginSignupTitle.textContent = 'Sign Up';
-    loginForm.style.display = 'none';
-    signupForm.style.display = 'block';
-    authMessage.textContent = '';
-});
-
-showLoginLink.addEventListener('click', (e) => {
-    e.preventDefault();
+// Function to show login form
+function showLogin() {
     loginSignupTitle.textContent = 'Login';
     loginForm.style.display = 'block';
     signupForm.style.display = 'none';
     authMessage.textContent = '';
+}
+
+// Function to show signup form
+function showSignup() {
+    loginSignupTitle.textContent = 'Sign Up';
+    loginForm.style.display = 'none';
+    signupForm.style.display = 'block';
+    authMessage.textContent = '';
+}
+
+showSignupLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    showSignup();
+});
+
+showLoginLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    showLogin();
 });
 
 logoutBtn.addEventListener('click', () => {
