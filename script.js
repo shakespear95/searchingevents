@@ -15,6 +15,7 @@ const loginBtnMobile = document.getElementById('loginBtnMobile');
 const signupBtnMobile = document.getElementById('signupBtnMobile');
 
 // Debug mobile menu elements
+console.log('🔍 DEBUG: Checking all DOM elements...');
 console.log('Mobile menu elements found:', {
     menuToggle: !!menuToggle,
     mobileMenu: !!mobileMenu,
@@ -25,6 +26,13 @@ console.log('Mobile menu elements found:', {
     loginForm: !!loginForm,
     signupForm: !!signupForm
 });
+
+// Test if JavaScript is working at all
+console.log('🟢 JavaScript is running!');
+window.debugTest = function() {
+    alert('JavaScript is working!');
+    console.log('Debug test function called');
+};
 const openSearchBtnMobile = document.getElementById('openSearchBtnMobile');
 
 // Get DOM element for loading overlay
@@ -189,19 +197,24 @@ window.addEventListener('click', (event) => {
     }
 });
 
-// Mobile menu toggle
+// EMERGENCY FIX: Simple mobile menu toggle without complex logic
 if (menuToggle && mobileMenu) {
-    // Handle both click and touch events for iOS Safari compatibility
-    function toggleMobileMenu(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log('Mobile menu toggle activated');
-        mobileMenu.classList.add('open');
-        document.body.style.overflow = 'hidden'; // Prevent scrolling when menu is open
-    }
+    console.log('✅ Setting up SIMPLE mobile menu toggle');
     
-    menuToggle.addEventListener('click', toggleMobileMenu);
-    menuToggle.addEventListener('touchstart', toggleMobileMenu, { passive: false });
+    try {
+        menuToggle.addEventListener('click', function() {
+            console.log('🎯 Menu toggle clicked!');
+            mobileMenu.classList.add('open');
+        });
+        console.log('✅ Event listener attached successfully');
+    } catch (error) {
+        console.error('❌ Error attaching event listener:', error);
+    }
+} else {
+    console.error('❌ Mobile menu elements not found:', { 
+        menuToggle: !!menuToggle, 
+        mobileMenu: !!mobileMenu 
+    });
 }
 
 // Close mobile menu
