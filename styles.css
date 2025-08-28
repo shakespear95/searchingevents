@@ -212,13 +212,17 @@ a:hover {
     align-items: center;
     justify-content: center;
     transform: translateX(100%); /* Start off-screen */
-    transition: transform 0.3s ease-in-out;
+    -webkit-transform: translateX(100%); /* Safari/iOS support */
+    transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+    -webkit-transition: -webkit-transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
     opacity: 0;
     pointer-events: none;
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
 }
 
 .mobile-menu.open {
     transform: translateX(0); /* Slide in */
+    -webkit-transform: translateX(0); /* Safari/iOS support */
     opacity: 1;
     pointer-events: all;
 }
@@ -236,6 +240,8 @@ a:hover {
 
 .mobile-menu ul li a,
 .mobile-menu .search-btn-mobile,
+.mobile-menu .login-btn-mobile,
+.mobile-menu .signup-btn-mobile,
 .mobile-menu .close-mobile-menu {
     font-size: 1.8em;
     color: var(--text-light);
@@ -245,11 +251,19 @@ a:hover {
     background: none;
     width: 100%;
     cursor: pointer;
+    transition: color 0.3s ease;
 }
 
 .mobile-menu .search-btn-mobile,
+.mobile-menu .login-btn-mobile,
+.mobile-menu .signup-btn-mobile,
 .mobile-menu .close-mobile-menu {
     color: var(--accent-blue);
+}
+
+.mobile-menu .login-btn-mobile:hover,
+.mobile-menu .signup-btn-mobile:hover {
+    color: var(--accent-purple);
 }
 
 .mobile-menu .close-mobile-menu {

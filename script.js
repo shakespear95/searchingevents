@@ -11,12 +11,16 @@ const featuredEventsContainer = document.getElementById('featuredEventsContainer
 const menuToggle = document.getElementById('menuToggle');
 const mobileMenu = document.getElementById('mobileMenu');
 const closeMobileMenu = document.getElementById('closeMobileMenu');
+const loginBtnMobile = document.getElementById('loginBtnMobile');
+const signupBtnMobile = document.getElementById('signupBtnMobile');
 
 // Debug mobile menu elements
 console.log('Mobile menu elements found:', {
     menuToggle: !!menuToggle,
     mobileMenu: !!mobileMenu,
-    closeMobileMenu: !!closeMobileMenu
+    closeMobileMenu: !!closeMobileMenu,
+    loginBtnMobile: !!loginBtnMobile,
+    signupBtnMobile: !!signupBtnMobile
 });
 const openSearchBtnMobile = document.getElementById('openSearchBtnMobile');
 
@@ -139,7 +143,26 @@ if (heroSearchBtn) {
 if (openSearchBtnMobile) {
     openSearchBtnMobile.addEventListener('click', () => {
         mobileMenu.classList.remove('open');
+        document.body.style.overflow = '';
         handleSearchClick();
+    });
+}
+
+// Mobile login button
+if (loginBtnMobile) {
+    loginBtnMobile.addEventListener('click', () => {
+        mobileMenu.classList.remove('open');
+        document.body.style.overflow = '';
+        loginModal.style.display = 'block';
+    });
+}
+
+// Mobile signup button  
+if (signupBtnMobile) {
+    signupBtnMobile.addEventListener('click', () => {
+        mobileMenu.classList.remove('open');
+        document.body.style.overflow = '';
+        signupModal.style.display = 'block';
     });
 }
 
@@ -159,13 +182,17 @@ window.addEventListener('click', (event) => {
 
 // Mobile menu toggle
 if (menuToggle && mobileMenu) {
-    menuToggle.addEventListener('click', (e) => {
+    // Handle both click and touch events for iOS Safari compatibility
+    function toggleMobileMenu(e) {
         e.preventDefault();
         e.stopPropagation();
-        console.log('Mobile menu toggle clicked');
+        console.log('Mobile menu toggle activated');
         mobileMenu.classList.add('open');
         document.body.style.overflow = 'hidden'; // Prevent scrolling when menu is open
-    });
+    }
+    
+    menuToggle.addEventListener('click', toggleMobileMenu);
+    menuToggle.addEventListener('touchstart', toggleMobileMenu, { passive: false });
 }
 
 // Close mobile menu
