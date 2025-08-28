@@ -120,7 +120,7 @@ async function getRawEventsFromPerplexity(apiKey, prompt) {
             {
                 model: 'sonar-pro',
                 messages: [{ role: 'user', content: prompt }],
-                max_tokens: 1500, // Limit response size for faster processing
+                max_tokens: 600, // Further reduced for faster processing
                 temperature: 0.1   // Lower temperature for more focused results
             },
             {
@@ -128,7 +128,7 @@ async function getRawEventsFromPerplexity(apiKey, prompt) {
                     'Authorization': `Bearer ${apiKey}`,
                     'Content-Type': 'application/json',
                 },
-                timeout: 25000 // 25 second timeout
+                timeout: 15000 // Reduced to 15 second timeout
             }
         );
         
@@ -399,14 +399,31 @@ exports.handler = async (event) => {
         console.log('Raw Perplexity response:', rawPerplexityResponse);
         
         if (!rawPerplexityResponse) {
-             return {
+            console.log('Perplexity failed, creating fallback events for:', location);
+            
+            // Create fallback events when Perplexity fails
+            const fallbackEvents = [{
+                name: `Events in ${location}`,
+                description: `We're currently experiencing high demand. Please try searching again in a few moments, or check local event websites for current happenings in ${location}.`,
+                date: 'Check local listings',
+                location: location,
+                price: 'Varies',
+                source: ''
+            }];
+            
+            return {
                 statusCode: 200,
                 headers: {
                     'Access-Control-Allow-Origin': '*',
                     'Access-Control-Allow-Methods': 'POST,OPTIONS',
                     'Access-Control-Allow-Headers': 'Content-Type'
                 },
-                body: JSON.stringify({ events: [], message: "Perplexity search failed. Please try again." }),
+                body: JSON.stringify({ 
+                    events: fallbackEvents,
+                    searchLocation: location,
+                    totalEvents: 1,
+                    message: "Search service experiencing high load. Please try again." 
+                }),
             };
         }
 
