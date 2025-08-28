@@ -656,20 +656,40 @@ eventForm.addEventListener("submit", async function (e) {
         if (response.ok) {
             console.log('Search response received:', result);
             
+            // Parse the result.body if it exists (Lambda function returns body as string)
+            let parsedResult = result;
+            if (result.body && typeof result.body === 'string') {
+                try {
+                    parsedResult = JSON.parse(result.body);
+                    console.log('Parsed result from body:', parsedResult);
+                } catch (parseError) {
+                    console.error('Failed to parse result.body:', parseError);
+                    parsedResult = result;
+                }
+            }
+            
             // Store the search results for the results page
-            if (result.events && result.events.length > 0) {
+            if (parsedResult.events && parsedResult.events.length > 0) {
+                // Clean up the events data (remove ** prefixes)
+                const cleanedEvents = parsedResult.events.map(event => ({
+                    ...event,
+                    date: event.date ? event.date.replace(/^\*\* /, '') : event.date,
+                    location: event.location ? event.location.replace(/^\*\* /, '') : event.location,
+                    description: event.description || `${event.name} - A great event happening in Berlin!`
+                }));
+                
                 const searchResults = {
-                    events: result.events,
-                    searchLocation: result.searchLocation,
+                    events: cleanedEvents,
+                    searchLocation: parsedResult.searchLocation,
                     searchParams: data,
                     searchDate: new Date().toISOString(),
-                    totalEvents: result.totalEvents
+                    totalEvents: parsedResult.totalEvents
                 };
                 
                 // Store in localStorage for the results page
                 localStorage.setItem('latestSearchResults', JSON.stringify(searchResults));
                 
-                showSearchSubmissionSuccess(data, result.events);
+                showSearchSubmissionSuccess(data, cleanedEvents);
             } else {
                 console.log('No events received, creating sample events for testing');
                 
