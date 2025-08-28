@@ -238,9 +238,9 @@ async function handleAuthResponse(response) {
             updateAuthUI();
             authMessage.textContent = ''; // Clear message
             
-            // Load search history after successful login
+            // Load local search history after successful login
             if (currentUserId) {
-                loadSearchHistory();
+                displayLocalSearchHistory();
             }
         }, 1000);
     } else {
@@ -355,11 +355,52 @@ signupForm.addEventListener('submit', async (e) => {
     }
 });
 
-// --- Search History Functions ---
+// --- Search History Functions (Local Storage Based) ---
 
-// Function to load and display search history for logged-in user
-async function loadSearchHistory() {
-    console.log('DEBUG: loadSearchHistory called');
+// Function to add search to local history
+function addSearchToLocalHistory(searchParams, events) {
+    if (!currentUserId || !events || events.length === 0) return;
+    
+    const timestamp = Date.now();
+    const searchDate = new Date().toISOString();
+    
+    // Create search summary
+    const location = searchParams.location || 'Any location';
+    const activityType = searchParams.activity_type || 'Any activity';
+    const timeframe = searchParams.timeframe || 'Any time';
+    const searchSummary = `${activityType} in ${location} - ${timeframe}`;
+    
+    const searchEntry = {
+        searchId: `search-${currentUserId}-${timestamp}`,
+        searchDate: searchDate,
+        searchSummary: searchSummary,
+        searchTimestamp: timestamp,
+        searchParams: searchParams,
+        events: events,
+        eventsCount: events.length
+    };
+    
+    // Get existing history or create new array
+    const historyKey = `searchHistory_${currentUserId}`;
+    let searchHistory = JSON.parse(localStorage.getItem(historyKey) || '[]');
+    
+    // Add new search to beginning of array
+    searchHistory.unshift(searchEntry);
+    
+    // Keep only last 10 searches
+    if (searchHistory.length > 10) {
+        searchHistory = searchHistory.slice(0, 10);
+    }
+    
+    // Save back to localStorage
+    localStorage.setItem(historyKey, JSON.stringify(searchHistory));
+    
+    console.log('✅ Search added to local history:', searchSummary);
+}
+
+// Function to load and display local search history
+function displayLocalSearchHistory() {
+    console.log('DEBUG: displayLocalSearchHistory called');
     console.log('DEBUG: currentUserId =', currentUserId);
     
     if (!currentUserId) {
@@ -367,39 +408,20 @@ async function loadSearchHistory() {
         searchHistorySection.style.display = 'none';
         return;
     }
-
-    try {
-        console.log(`Loading search history for user: ${currentUserId}`);
-        const searchHistoryUrl = `${AWS_API_BASE_URL}/search-history?userId=${encodeURIComponent(currentUserId)}`;
-        console.log('DEBUG: Fetching from URL:', searchHistoryUrl);
-        
-        const response = await fetch(searchHistoryUrl);
-        console.log('DEBUG: Response status:', response.status);
-        console.log('DEBUG: Response ok:', response.ok);
-        
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.log('DEBUG: Error response text:', errorText);
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        console.log('DEBUG: Search history data received:', data);
-        
-        if (data.searchHistory && data.searchHistory.length > 0) {
-            console.log('DEBUG: Displaying', data.searchHistory.length, 'search history items');
-            displaySearchHistoryTabs(data.searchHistory);
-            searchHistorySection.style.display = 'block';
-        } else {
-            console.log('DEBUG: No search history found, showing empty message');
-            displayEmptySearchHistory();
-            searchHistorySection.style.display = 'block';
-        }
-        
-    } catch (error) {
-        console.error('Error loading search history:', error);
-        console.log('DEBUG: Hiding search history section due to error');
-        searchHistorySection.style.display = 'none';
+    
+    const historyKey = `searchHistory_${currentUserId}`;
+    const searchHistory = JSON.parse(localStorage.getItem(historyKey) || '[]');
+    
+    console.log('DEBUG: Local search history:', searchHistory);
+    
+    if (searchHistory && searchHistory.length > 0) {
+        console.log('DEBUG: Displaying', searchHistory.length, 'local search history items');
+        displaySearchHistoryTabs(searchHistory);
+        searchHistorySection.style.display = 'block';
+    } else {
+        console.log('DEBUG: No local search history found, showing empty message');
+        displayEmptySearchHistory();
+        searchHistorySection.style.display = 'block';
     }
 }
 
@@ -438,8 +460,8 @@ function displayEmptySearchHistory() {
     `;
 }
 
-// Function to load and display details of a specific search
-async function loadSearchDetails(searchId, tabElement) {
+// Function to load and display details of a specific search (from local storage)
+function loadSearchDetails(searchId, tabElement) {
     try {
         // Remove active class from all tabs
         document.querySelectorAll('.search-history-tab').forEach(tab => {
@@ -449,44 +471,28 @@ async function loadSearchDetails(searchId, tabElement) {
         // Add active class to clicked tab
         tabElement.classList.add('active');
         
-        // Show loading in results
-        resultsDiv.innerHTML = '<p class="loading-message">Loading saved search results...</p>';
+        console.log(`Loading local search details for: ${searchId}`);
         
-        console.log(`Loading search details for: ${searchId}`);
+        // Get search from local storage
+        const historyKey = `searchHistory_${currentUserId}`;
+        const searchHistory = JSON.parse(localStorage.getItem(historyKey) || '[]');
         
-        const response = await fetch(`${AWS_API_BASE_URL}/search-details?searchId=${encodeURIComponent(searchId)}&userId=${encodeURIComponent(currentUserId)}`);
+        // Find the specific search
+        const searchDetails = searchHistory.find(search => search.searchId === searchId);
         
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        if (searchDetails && searchDetails.events) {
+            // Display the saved search results using the existing renderEventCards function
+            renderEventCards(resultsDiv, searchDetails.events, "No events found in this saved search.");
+        } else {
+            resultsDiv.innerHTML = '<p class="error-message">Search details not found.</p>';
         }
-
-        const searchDetails = await response.json();
-        
-        // Display the saved search results
-        displaySearchResults(searchDetails.searchResults, searchDetails.searchSummary);
         
     } catch (error) {
-        console.error('Error loading search details:', error);
+        console.error('Error loading local search details:', error);
         resultsDiv.innerHTML = '<p class="error-message">Error loading search results. Please try again.</p>';
     }
 }
 
-// Function to display search results (handles both new searches and saved searches)
-function displaySearchResults(searchResults, searchSummary = '') {
-    if (searchResults && typeof searchResults === 'string' && searchResults.length > 0) {
-        // For saved searches, searchResults is the raw Perplexity response
-        resultsDiv.innerHTML = `
-            ${searchSummary ? `<h3>Search: ${searchSummary}</h3>` : ''}
-            <div class="events-container">
-                <pre style="white-space: pre-wrap; font-family: Arial, sans-serif; line-height: 1.6; background: var(--secondary-bg); padding: 20px; border-radius: 10px;">
-${searchResults}
-                </pre>
-            </div>
-        `;
-    } else {
-        resultsDiv.innerHTML = '<p class="no-results-message">No search results found.</p>';
-    }
-}
 
 
 // --- Form Submission Logic (Modified for loading indicator) ---
@@ -540,15 +546,16 @@ eventForm.addEventListener("submit", async function (e) {
         // Handle the response and display results or a message
         if (result && result.events) { // AWS API returns events array
             renderEventCards(resultsDiv, result.events, "No events found for your search criteria.");
+            
+            // Add search to history immediately (if user is logged in and events were found)
+            if (currentUserId && result.events.length > 0) {
+                addSearchToLocalHistory(data, result.events);
+                displayLocalSearchHistory(); // Update history tabs immediately
+            }
         } else if (result && result.message) {
             resultsDiv.innerHTML = `<p class="no-results-message">${result.message}</p>`;
         } else {
             resultsDiv.innerHTML = '<p class="no-results-message">Search request sent! Please check your email for results if provided, or try a different search.</p>';
-        }
-
-        // Reload search history to show the new search as a tab (if user is logged in)
-        if (currentUserId) {
-            loadSearchHistory();
         }
 
     } catch (error) {
@@ -581,7 +588,7 @@ if (isUserLoggedIn()) {
     console.log('DEBUG: Extracted currentUserId =', currentUserId);
     
     if (currentUserId) {
-        console.log('DEBUG: Loading search history on page init');
-        loadSearchHistory();
+        console.log('DEBUG: Loading local search history on page init');
+        displayLocalSearchHistory();
     }
 }
