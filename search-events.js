@@ -145,6 +145,88 @@ async function getRawEventsFromPerplexity(apiKey, prompt) {
     }
 }
 
+// NEW: Function to parse Perplexity response into structured events
+function parseEventsFromText(text, searchLocation) {
+    console.log('Parsing events from text for location:', searchLocation);
+    
+    const events = [];
+    
+    // Split by lines and look for event patterns
+    const lines = text.split('\n');
+    let currentEvent = null;
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        // Look for event titles (usually marked with ** or - **)
+        if (line.match(/^\*\*.*\*\*$/) || line.match(/^-\s*\*\*.*\*\*$/)) {
+            // Save previous event if exists
+            if (currentEvent && currentEvent.name) {
+                events.push(currentEvent);
+            }
+            
+            // Start new event
+            currentEvent = {
+                name: line.replace(/^\*\*|\*\*$|^-\s*\*\*|\*\*$/g, '').trim(),
+                description: '',
+                date: 'Date TBA',
+                location: searchLocation || 'Location TBA',
+                price: 'Price TBA',
+                source: ''
+            };
+        }
+        // Look for location info
+        else if (line.match(/location:|where:/i) && currentEvent) {
+            const locationMatch = line.match(/(?:location:|where:)\s*(.+)/i);
+            if (locationMatch) {
+                currentEvent.location = locationMatch[1].trim();
+            }
+        }
+        // Look for date info
+        else if (line.match(/date:|when:|time:/i) && currentEvent) {
+            const dateMatch = line.match(/(?:date:|when:|time:)\s*(.+)/i);
+            if (dateMatch) {
+                currentEvent.date = dateMatch[1].trim();
+            }
+        }
+        // Look for price info
+        else if (line.match(/price:|cost:|€|£|\$/i) && currentEvent) {
+            if (line.includes('free') || line.includes('Free')) {
+                currentEvent.price = 'Free';
+            } else {
+                const priceMatch = line.match(/(€|£|\$)?\d+(?:\.\d{2})?(?:\s*-\s*(?:€|£|\$)?\d+(?:\.\d{2})?)?/);
+                if (priceMatch) {
+                    currentEvent.price = priceMatch[0];
+                }
+            }
+        }
+        // Collect description lines
+        else if (line && currentEvent && !line.match(/^-\s/) && line.length > 10) {
+            currentEvent.description += (currentEvent.description ? ' ' : '') + line;
+        }
+    }
+    
+    // Add the last event
+    if (currentEvent && currentEvent.name) {
+        events.push(currentEvent);
+    }
+    
+    // If no structured events found, create one general event from the text
+    if (events.length === 0 && text.length > 50) {
+        events.push({
+            name: `Events in ${searchLocation}`,
+            description: text.substring(0, 200) + (text.length > 200 ? '...' : ''),
+            date: 'Various dates',
+            location: searchLocation || 'Various locations',
+            price: 'Varies',
+            source: ''
+        });
+    }
+    
+    console.log(`Parsed ${events.length} events from text`);
+    return events;
+}
+
 // Function to save search results to DynamoDB
 async function saveSearchToDynamoDB(searchParams, results, userId) {
     try {
@@ -360,20 +442,11 @@ Return only the HTML content, no explanatory text:`;
         // Add validation before formatting
         if (!htmlResponse || htmlResponse === 'undefined' || htmlResponse.trim() === '') {
             console.error('Claude returned empty or undefined response');
-            console.log('Using fallback: converting Perplexity response to simple HTML');
+            console.log('Using fallback: parsing Perplexity response into events JSON');
             
-            // Fallback: Create simple HTML from Perplexity response
-            const fallbackHTML = `
-                <div class="events-container">
-                    <h2>🎵 Jazz Events in ${location}</h2>
-                    <div class="event-content">
-                        <pre style="white-space: pre-wrap; font-family: Arial, sans-serif; line-height: 1.6;">
-${rawPerplexityResponse}
-                        </pre>
-                    </div>
-                    <p><em>Results powered by Perplexity AI</em></p>
-                </div>
-            `;
+            // NEW: Parse Perplexity response into structured events
+            const parsedEvents = parseEventsFromText(rawPerplexityResponse, location);
+            console.log('Fallback parsed events:', parsedEvents);
             
             // Save fallback search results to DynamoDB (TESTING: always save)
             if (isAuthenticatedUser) {
@@ -400,6 +473,7 @@ ${rawPerplexityResponse}
                 console.log('Skipping database save - user not authenticated or userId missing');
             }
             
+            // Return parsed events in JSON format (not HTML)
             return {
                 statusCode: 200,
                 headers: {
@@ -407,7 +481,11 @@ ${rawPerplexityResponse}
                     'Access-Control-Allow-Methods': 'POST,OPTIONS',
                     'Access-Control-Allow-Headers': 'Content-Type'
                 },
-                body: JSON.stringify({ html: fallbackHTML }),
+                body: JSON.stringify({ 
+                    events: parsedEvents,
+                    searchLocation: location,
+                    totalEvents: parsedEvents.length
+                }),
             };
         }
         
@@ -498,6 +576,10 @@ ${rawPerplexityResponse}
             console.log('Skipping database save - user not authenticated or userId missing');
         }
 
+        // Parse HTML response into events and return JSON
+        const parsedEventsFromClaude = parseEventsFromText(htmlResponse, location);
+        console.log('Parsed events from Claude HTML:', parsedEventsFromClaude);
+        
         return {
             statusCode: 200,
             headers: {
@@ -505,7 +587,11 @@ ${rawPerplexityResponse}
                 'Access-Control-Allow-Methods': 'POST,OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type'
             },
-            body: JSON.stringify({ html: styledHTML }),
+            body: JSON.stringify({ 
+                events: parsedEventsFromClaude,
+                searchLocation: location,
+                totalEvents: parsedEventsFromClaude.length
+            }),
         };
 
     } catch (error) {

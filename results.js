@@ -48,17 +48,7 @@ async function loadSearchResults(searchId, userId) {
         
         showLoading();
         
-        // For now, let's simulate the API call and show a sample result
-        // Later you can replace this with actual API call to your Lambda function
-        
-        setTimeout(() => {
-            // Simulate successful data retrieval
-            displaySampleResults(searchId, userId);
-            hideLoading();
-        }, 2000);
-        
-        // UNCOMMENT THIS WHEN YOUR LAMBDA FUNCTION IS READY:
-        /*
+        // Call the actual API to get search results from database
         const response = await fetch(`${AWS_API_BASE_URL}/search-details?searchId=${encodeURIComponent(searchId)}&userId=${encodeURIComponent(userId)}`);
         
         if (!response.ok) {
@@ -66,14 +56,102 @@ async function loadSearchResults(searchId, userId) {
         }
 
         const data = await response.json();
-        displaySearchResults(data);
+        console.log('Received search details from API:', data);
+        
+        if (data.searchResults && data.searchSummary) {
+            // Parse the raw search results (Perplexity response) into events
+            const events = parseEventsFromSearchResults(data.searchResults);
+            updateSearchHeader(data.searchSummary, data.searchDate);
+            displayEvents(events);
+        } else {
+            displayErrorMessage('Search results not found or invalid format.');
+        }
+        
         hideLoading();
-        */
         
     } catch (error) {
         console.error('Error loading search results:', error);
         hideLoading();
         displayErrorMessage('Failed to load search results. Please try again.');
+    }
+}
+
+// Function to parse raw search results into structured events
+function parseEventsFromSearchResults(rawText) {
+    console.log('Parsing events from raw search results...');
+    
+    const events = [];
+    const lines = rawText.split('\n');
+    let currentEvent = null;
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        // Look for event titles (usually marked with ** or - **)
+        if (line.match(/^\*\*.*\*\*$/) || line.match(/^-\s*\*\*.*\*\*$/)) {
+            // Save previous event if exists
+            if (currentEvent && currentEvent.name) {
+                events.push(currentEvent);
+            }
+            
+            // Start new event
+            currentEvent = {
+                name: line.replace(/^\*\*|\*\*$|^-\s*\*\*|\*\*$/g, '').trim(),
+                description: '',
+                date: 'Date TBA',
+                location: 'Location TBA',
+                price: 'Price TBA',
+                source: ''
+            };
+        }
+        // Look for location info
+        else if (line.match(/location:|where:/i) && currentEvent) {
+            const locationMatch = line.match(/(?:location:|where:)\s*(.+)/i);
+            if (locationMatch) {
+                currentEvent.location = locationMatch[1].trim();
+            }
+        }
+        // Look for date info
+        else if (line.match(/date:|when:|time:/i) && currentEvent) {
+            const dateMatch = line.match(/(?:date:|when:|time:)\s*(.+)/i);
+            if (dateMatch) {
+                currentEvent.date = dateMatch[1].trim();
+            }
+        }
+        // Look for price info
+        else if (line.match(/price:|cost:|€|£|\$/i) && currentEvent) {
+            if (line.includes('free') || line.includes('Free')) {
+                currentEvent.price = 'Free';
+            } else {
+                const priceMatch = line.match(/(€|£|\$)?\d+(?:\.\d{2})?(?:\s*-\s*(?:€|£|\$)?\d+(?:\.\d{2})?)?/);
+                if (priceMatch) {
+                    currentEvent.price = priceMatch[0];
+                }
+            }
+        }
+        // Collect description lines
+        else if (line && currentEvent && !line.match(/^-\s/) && line.length > 10) {
+            currentEvent.description += (currentEvent.description ? ' ' : '') + line;
+        }
+    }
+    
+    // Add the last event
+    if (currentEvent && currentEvent.name) {
+        events.push(currentEvent);
+    }
+    
+    console.log(`Parsed ${events.length} events from search results`);
+    return events;
+}
+
+// Function to update the search header with actual data
+function updateSearchHeader(searchSummary, searchDate) {
+    searchTitle.textContent = "🎯 Your Curated Events";
+    searchSummary.textContent = searchSummary || "Event Search Results";
+    
+    if (searchDate) {
+        const formattedDate = new Date(searchDate).toLocaleDateString();
+        searchDate.querySelector('span').textContent = formattedDate;
     }
 }
 
