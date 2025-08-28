@@ -675,7 +675,7 @@ eventForm.addEventListener("submit", async function (e) {
                     ...event,
                     date: event.date ? event.date.replace(/^\*\* /, '') : event.date,
                     location: event.location ? event.location.replace(/^\*\* /, '') : event.location,
-                    description: event.description || `${event.name} - A great event happening in Berlin!`
+                    description: event.description || `${event.name} - A great event happening in ${parsedResult.searchLocation || data.location || 'the area'}!`
                 }));
                 
                 const searchResults = {
