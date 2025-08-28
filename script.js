@@ -13,26 +13,6 @@ const mobileMenu = document.getElementById('mobileMenu');
 const closeMobileMenu = document.getElementById('closeMobileMenu');
 const loginBtnMobile = document.getElementById('loginBtnMobile');
 const signupBtnMobile = document.getElementById('signupBtnMobile');
-
-// Debug mobile menu elements
-console.log('🔍 DEBUG: Checking all DOM elements...');
-console.log('Mobile menu elements found:', {
-    menuToggle: !!menuToggle,
-    mobileMenu: !!mobileMenu,
-    closeMobileMenu: !!closeMobileMenu,
-    loginBtnMobile: !!loginBtnMobile,
-    signupBtnMobile: !!signupBtnMobile,
-    loginSignupModal: !!loginSignupModal,
-    loginForm: !!loginForm,
-    signupForm: !!signupForm
-});
-
-// Test if JavaScript is working at all
-console.log('🟢 JavaScript is running!');
-window.debugTest = function() {
-    alert('JavaScript is working!');
-    console.log('Debug test function called');
-};
 const openSearchBtnMobile = document.getElementById('openSearchBtnMobile');
 
 // Get DOM element for loading overlay
@@ -65,6 +45,26 @@ const AWS_API_BASE_URL = "https://qk3jiyk1e8.execute-api.ap-south-1.amazonaws.co
 
 // Global variable to store current user ID for search history
 let currentUserId = null;
+
+// Debug mobile menu elements - MOVED AFTER ALL DOM DECLARATIONS
+console.log('🔍 DEBUG: Checking all DOM elements...');
+console.log('Mobile menu elements found:', {
+    menuToggle: !!menuToggle,
+    mobileMenu: !!mobileMenu,
+    closeMobileMenu: !!closeMobileMenu,
+    loginBtnMobile: !!loginBtnMobile,
+    signupBtnMobile: !!signupBtnMobile,
+    loginSignupModal: !!loginSignupModal,
+    loginForm: !!loginForm,
+    signupForm: !!signupForm
+});
+
+// Test if JavaScript is working at all
+console.log('🟢 JavaScript is running!');
+window.debugTest = function() {
+    alert('JavaScript is working!');
+    console.log('Debug test function called');
+};
 
 // --- Helper function to render event cards (REUSABLE) ---
 function renderEventCards(containerElement, eventsData, messageIfEmpty) {
