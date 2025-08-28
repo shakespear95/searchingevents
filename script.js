@@ -11,6 +11,13 @@ const featuredEventsContainer = document.getElementById('featuredEventsContainer
 const menuToggle = document.getElementById('menuToggle');
 const mobileMenu = document.getElementById('mobileMenu');
 const closeMobileMenu = document.getElementById('closeMobileMenu');
+
+// Debug mobile menu elements
+console.log('Mobile menu elements found:', {
+    menuToggle: !!menuToggle,
+    mobileMenu: !!mobileMenu,
+    closeMobileMenu: !!closeMobileMenu
+});
 const openSearchBtnMobile = document.getElementById('openSearchBtnMobile');
 
 // Get DOM element for loading overlay
@@ -151,16 +158,44 @@ window.addEventListener('click', (event) => {
 });
 
 // Mobile menu toggle
-if (menuToggle) {
-    menuToggle.addEventListener('click', () => {
+if (menuToggle && mobileMenu) {
+    menuToggle.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Mobile menu toggle clicked');
         mobileMenu.classList.add('open');
+        document.body.style.overflow = 'hidden'; // Prevent scrolling when menu is open
     });
 }
 
 // Close mobile menu
-if (closeMobileMenu) {
-    closeMobileMenu.addEventListener('click', () => {
+if (closeMobileMenu && mobileMenu) {
+    closeMobileMenu.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Close mobile menu clicked');
         mobileMenu.classList.remove('open');
+        document.body.style.overflow = ''; // Restore scrolling
+    });
+}
+
+// Close mobile menu when clicking outside or on menu items
+if (mobileMenu) {
+    // Close when clicking on the menu background
+    mobileMenu.addEventListener('click', (e) => {
+        if (e.target === mobileMenu) {
+            mobileMenu.classList.remove('open');
+            document.body.style.overflow = '';
+        }
+    });
+    
+    // Close when clicking on menu links
+    const mobileMenuLinks = mobileMenu.querySelectorAll('a');
+    mobileMenuLinks.forEach(link => {
+        link.addEventListener('click', () => {
+            mobileMenu.classList.remove('open');
+            document.body.style.overflow = '';
+        });
     });
 }
 

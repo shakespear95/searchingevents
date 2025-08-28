@@ -5,6 +5,7 @@ const AWS = require('aws-sdk');
 
 const secretsManager = new AWS.SecretsManager();
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
+const ses = new AWS.SES({ region: 'ap-south-1' }); // Use your preferred AWS region
 let clients; // An object to hold all initialized API clients
 
 const EVENTS_TABLE = process.env.EVENTS_TABLE || 'EventFinderUserSearches';
@@ -190,13 +191,33 @@ function parseEventsFromText(text, searchLocation) {
             }
         }
         // Look for price info
-        else if (line.match(/price:|cost:|€|£|\$/i) && currentEvent) {
-            if (line.includes('free') || line.includes('Free')) {
+        else if (line.match(/price:|cost:|entry:|admission:|ticket:|€|£|\$|₹|¥/i) && currentEvent) {
+            if (line.toLowerCase().includes('free') || line.toLowerCase().includes('no charge') || line.toLowerCase().includes('complimentary')) {
                 currentEvent.price = 'Free';
             } else {
-                const priceMatch = line.match(/(€|£|\$)?\d+(?:\.\d{2})?(?:\s*-\s*(?:€|£|\$)?\d+(?:\.\d{2})?)?/);
+                // Enhanced price matching for various currencies and formats
+                const priceMatch = line.match(/(€|£|\$|₹|¥|USD|EUR|GBP|INR|JPY)?\s*\d+(?:[.,]\d{2})?(?:\s*-\s*(?:€|£|\$|₹|¥|USD|EUR|GBP|INR|JPY)?\s*\d+(?:[.,]\d{2})?)?(?:\s*(?:per person|pp|each))?/i);
                 if (priceMatch) {
-                    currentEvent.price = priceMatch[0];
+                    currentEvent.price = priceMatch[0].trim();
+                } else {
+                    // Look for "from X" or "starting at X" patterns
+                    const fromPriceMatch = line.match(/(?:from|starting\s+(?:at|from))\s+(€|£|\$|₹|¥)?\s*\d+(?:[.,]\d{2})?/i);
+                    if (fromPriceMatch) {
+                        currentEvent.price = fromPriceMatch[0].trim();
+                    }
+                }
+            }
+        }
+        // Look for website/URL info
+        else if (line.match(/website:|url:|link:|http|www\./i) && currentEvent) {
+            const urlMatch = line.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/i);
+            if (urlMatch) {
+                currentEvent.source = urlMatch[0];
+            } else {
+                // Extract domain names that might not have http
+                const domainMatch = line.match(/([a-zA-Z0-9-]+\.(?:com|org|net|gov|edu|co\.uk|de|fr|in|au)(?:\/[^\s]*)?)/i);
+                if (domainMatch) {
+                    currentEvent.source = domainMatch[1].startsWith('http') ? domainMatch[1] : `https://${domainMatch[1]}`;
                 }
             }
         }
@@ -225,6 +246,125 @@ function parseEventsFromText(text, searchLocation) {
     
     console.log(`Parsed ${events.length} events from text`);
     return events;
+}
+
+// Function to send search results via email
+async function sendSearchResultsEmail(userEmail, events, searchLocation, searchParams) {
+    try {
+        console.log(`Sending email to: ${userEmail}`);
+        
+        // Create HTML email content
+        const emailHTML = createEmailHTML(events, searchLocation, searchParams);
+        
+        const emailParams = {
+            Destination: {
+                ToAddresses: [userEmail]
+            },
+            Message: {
+                Body: {
+                    Html: {
+                        Charset: 'UTF-8',
+                        Data: emailHTML
+                    },
+                    Text: {
+                        Charset: 'UTF-8',
+                        Data: createEmailText(events, searchLocation)
+                    }
+                },
+                Subject: {
+                    Charset: 'UTF-8',
+                    Data: `🎯 Your Event Search Results: ${events.length} Events Found in ${searchLocation}`
+                }
+            },
+            Source: process.env.FROM_EMAIL || 'noreply@yourdomain.com', // Configure this in your AWS environment
+            ReplyToAddresses: ['noreply@yourdomain.com']
+        };
+
+        const result = await ses.sendEmail(emailParams).promise();
+        console.log('✅ Email sent successfully:', result.MessageId);
+        return { success: true, messageId: result.MessageId };
+        
+    } catch (error) {
+        console.error('❌ Email sending failed:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Function to create HTML email content
+function createEmailHTML(events, searchLocation, searchParams) {
+    const eventsHTML = events.map((event, index) => `
+        <div style="border: 1px solid #e0e0e0; border-radius: 8px; margin: 15px 0; padding: 20px; background: #f9f9f9;">
+            <h3 style="color: #2c3e50; margin: 0 0 10px 0;">${event.name}</h3>
+            <p style="margin: 5px 0; color: #555;"><strong>📅 Date:</strong> ${event.date}</p>
+            <p style="margin: 5px 0; color: #555;"><strong>📍 Location:</strong> ${event.location}</p>
+            <p style="margin: 5px 0; color: #555;"><strong>💰 Price:</strong> ${event.price}</p>
+            ${event.source ? `<p style="margin: 5px 0; color: #555;"><strong>🔗 Website:</strong> <a href="${event.source}" target="_blank">${event.source}</a></p>` : ''}
+            <p style="margin: 10px 0 0 0; color: #666; line-height: 1.4;">${event.description}</p>
+        </div>
+    `).join('');
+
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Your Event Search Results</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #ffffff;">
+        <div style="text-align: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; margin-bottom: 20px;">
+            <h1 style="margin: 0; font-size: 28px;">🎯 EventFinder</h1>
+            <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">Your Curated Event Search Results</p>
+        </div>
+        
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+            <h2 style="color: #2c3e50; margin: 0 0 10px 0;">Search Summary</h2>
+            <p style="margin: 5px 0; color: #666;"><strong>Location:</strong> ${searchLocation}</p>
+            <p style="margin: 5px 0; color: #666;"><strong>Activity Type:</strong> ${searchParams.activity_type || 'Any'}</p>
+            <p style="margin: 5px 0; color: #666;"><strong>Timeframe:</strong> ${searchParams.timeframe || 'Any time'}</p>
+            ${searchParams.keywords ? `<p style="margin: 5px 0; color: #666;"><strong>Keywords:</strong> ${searchParams.keywords}</p>` : ''}
+            <p style="margin: 15px 0 0 0; color: #28a745; font-weight: bold;">✅ Found ${events.length} Amazing Events</p>
+        </div>
+
+        <div>
+            <h2 style="color: #2c3e50; margin: 0 0 20px 0;">Your Events</h2>
+            ${eventsHTML}
+        </div>
+
+        <div style="background: #e9ecef; padding: 20px; border-radius: 8px; margin-top: 30px; text-align: center;">
+            <p style="margin: 0; color: #666; font-size: 14px;">
+                This email was generated by EventFinder AI search.<br>
+                Search performed on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}
+            </p>
+        </div>
+    </body>
+    </html>`;
+}
+
+// Function to create plain text email content
+function createEmailText(events, searchLocation) {
+    const eventsText = events.map((event, index) => `
+${index + 1}. ${event.name}
+   Date: ${event.date}
+   Location: ${event.location}
+   Price: ${event.price}
+   ${event.source ? `Website: ${event.source}` : ''}
+   Description: ${event.description}
+`).join('\n');
+
+    return `
+🎯 EventFinder - Your Event Search Results
+
+SEARCH SUMMARY
+Location: ${searchLocation}
+Found: ${events.length} events
+Generated: ${new Date().toLocaleString()}
+
+YOUR EVENTS
+${eventsText}
+
+---
+This email was generated by EventFinder AI search.
+`;
 }
 
 // Function to save search results to DynamoDB
@@ -389,7 +529,16 @@ exports.handler = async (event) => {
             perplexityPrompt += ` Within ${radius}km radius.`;
         }
         
-        perplexityPrompt += ` Please provide event names, locations, dates, times, and brief descriptions. Focus on real, current events with specific details. List 5-8 events maximum.`;
+        perplexityPrompt += ` For each event, please provide:
+
+**Event Name**
+- Date: [specific date and time]
+- Location: [venue name and address] 
+- Price: [ticket price with currency or "Free"]
+- Website: [official event URL if available]
+- Description: [brief description]
+
+Focus on real, current events with complete information including actual prices and official websites. List 5-8 events maximum.`;
             
         console.log('Simplified Perplexity prompt:', perplexityPrompt);
             
@@ -465,6 +614,25 @@ Return only the HTML content, no explanatory text:`;
             const parsedEvents = parseEventsFromText(rawPerplexityResponse, location);
             console.log('Fallback parsed events:', parsedEvents);
             
+            // Send email if email address is provided
+            if (email && parsedEvents.length > 0) {
+                console.log('Email address provided, sending results via email...');
+                try {
+                    const emailResult = await sendSearchResultsEmail(email, parsedEvents, location, searchParams);
+                    if (emailResult.success) {
+                        console.log('✅ Email sent successfully to:', email);
+                    } else {
+                        console.log('❌ Email sending failed:', emailResult.error);
+                    }
+                } catch (emailError) {
+                    console.error('❌ Email error:', emailError);
+                }
+            } else if (email && parsedEvents.length === 0) {
+                console.log('No events found, not sending email');
+            } else {
+                console.log('No email provided, skipping email notification');
+            }
+            
             // Save fallback search results to DynamoDB (TESTING: always save)
             if (isAuthenticatedUser) {
                 console.log(`ATTEMPTING TO SAVE fallback search for user: ${testUserId}`);
@@ -501,7 +669,11 @@ Return only the HTML content, no explanatory text:`;
                 body: JSON.stringify({ 
                     events: parsedEvents,
                     searchLocation: location,
-                    totalEvents: parsedEvents.length
+                    totalEvents: parsedEvents.length,
+                    emailSent: email ? true : false,
+                    message: email && parsedEvents.length > 0 ? 
+                        `Search results found and sent to ${email}` : 
+                        parsedEvents.length > 0 ? 'Search results found' : 'No events found'
                 }),
             };
         }

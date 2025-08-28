@@ -182,11 +182,25 @@ a:hover {
     color: var(--text-light);
     font-size: 1.5em;
     cursor: pointer;
+    padding: 10px;
+    border-radius: 5px;
+    transition: background-color 0.3s ease;
+    -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
+}
+
+.menu-toggle:hover,
+.menu-toggle:focus {
+    background-color: rgba(255, 255, 255, 0.1);
+    outline: none;
+}
+
+.menu-toggle:active {
+    background-color: rgba(255, 255, 255, 0.2);
 }
 
 /* Mobile Menu */
 .mobile-menu {
-    display: none; /* Hidden by default */
+    display: flex; /* Always display but keep off-screen */
     position: fixed;
     top: 0;
     left: 0;
@@ -199,10 +213,14 @@ a:hover {
     justify-content: center;
     transform: translateX(100%); /* Start off-screen */
     transition: transform 0.3s ease-in-out;
+    opacity: 0;
+    pointer-events: none;
 }
 
 .mobile-menu.open {
     transform: translateX(0); /* Slide in */
+    opacity: 1;
+    pointer-events: all;
 }
 
 .mobile-menu ul {
