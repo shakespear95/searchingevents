@@ -48,23 +48,26 @@ async function loadSearchResults(searchId, userId) {
         
         showLoading();
         
-        // Call the actual API to get search results from database
-        const response = await fetch(`${AWS_API_BASE_URL}/search-details?searchId=${encodeURIComponent(searchId)}&userId=${encodeURIComponent(userId)}`);
+        // Get search results from localStorage (stored by main search page)
+        const storedResults = localStorage.getItem('latestSearchResults');
+        console.log('Stored results from localStorage:', storedResults);
         
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        console.log('Received search details from API:', data);
-        
-        if (data.searchResults && data.searchSummary) {
-            // Parse the raw search results (Perplexity response) into events
-            const events = parseEventsFromSearchResults(data.searchResults);
-            updateSearchHeader(data.searchSummary, data.searchDate);
-            displayEvents(events);
+        if (storedResults) {
+            const searchData = JSON.parse(storedResults);
+            console.log('Parsed search data:', searchData);
+            
+            // Update header with search information
+            const searchSummary = `${searchData.searchParams.activity_type || 'Events'} in ${searchData.searchParams.location || 'Unknown'} - ${searchData.searchParams.timeframe || 'Any time'}`;
+            updateSearchHeader(searchSummary, searchData.searchDate);
+            
+            // Display the events directly
+            if (searchData.events && searchData.events.length > 0) {
+                displayEvents(searchData.events);
+            } else {
+                displayNoResults();
+            }
         } else {
-            displayErrorMessage('Search results not found or invalid format.');
+            displayErrorMessage('Search results not found. Please perform a new search.');
         }
         
         hideLoading();
@@ -145,12 +148,12 @@ function parseEventsFromSearchResults(rawText) {
 }
 
 // Function to update the search header with actual data
-function updateSearchHeader(searchSummary, searchDate) {
+function updateSearchHeader(summaryText, dateString) {
     searchTitle.textContent = "🎯 Your Curated Events";
-    searchSummary.textContent = searchSummary || "Event Search Results";
+    searchSummary.textContent = summaryText || "Event Search Results";
     
-    if (searchDate) {
-        const formattedDate = new Date(searchDate).toLocaleDateString();
+    if (dateString) {
+        const formattedDate = new Date(dateString).toLocaleDateString();
         searchDate.querySelector('span').textContent = formattedDate;
     }
 }

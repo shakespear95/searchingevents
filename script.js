@@ -654,8 +654,25 @@ eventForm.addEventListener("submit", async function (e) {
 
         // Handle the response - show success message and "View Results" button
         if (response.ok) {
-            // Search was submitted successfully
-            showSearchSubmissionSuccess(data);
+            console.log('Search response received:', result);
+            
+            // Store the search results for the results page
+            if (result.events && result.events.length > 0) {
+                const searchResults = {
+                    events: result.events,
+                    searchLocation: result.searchLocation,
+                    searchParams: data,
+                    searchDate: new Date().toISOString(),
+                    totalEvents: result.totalEvents
+                };
+                
+                // Store in localStorage for the results page
+                localStorage.setItem('latestSearchResults', JSON.stringify(searchResults));
+                
+                showSearchSubmissionSuccess(data, result.events);
+            } else {
+                showSearchSubmissionSuccess(data, []);
+            }
         } else {
             resultsDiv.innerHTML = '<p class="error-message">Search submission failed. Please try again.</p>';
         }
