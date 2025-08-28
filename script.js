@@ -355,6 +355,115 @@ signupForm.addEventListener('submit', async (e) => {
     }
 });
 
+// --- Search Submission Success Functions ---
+
+function showSearchSubmissionSuccess(searchParams) {
+    const location = searchParams.location || 'Any location';
+    const activityType = searchParams.activity_type || 'Any activity';
+    const timeframe = searchParams.timeframe || 'Any time';
+    const searchSummary = `${activityType} in ${location} - ${timeframe}`;
+    
+    // Store search details for results page
+    const searchId = `search-${currentUserId || 'guest'}-${Date.now()}`;
+    const searchDetails = {
+        searchId: searchId,
+        searchParams: searchParams,
+        searchSummary: searchSummary,
+        submittedAt: new Date().toISOString(),
+        userId: currentUserId
+    };
+    
+    // Save to localStorage temporarily
+    localStorage.setItem('pendingSearch', JSON.stringify(searchDetails));
+    
+    // Show success message with countdown and button
+    resultsDiv.innerHTML = `
+        <div class="search-submission-success">
+            <div class="success-icon">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <h3>🎯 Search Submitted Successfully!</h3>
+            <p class="search-summary"><strong>Search:</strong> ${searchSummary}</p>
+            <p class="processing-message">
+                <i class="fas fa-cogs"></i> 
+                Our AI is searching and curating the best events for you...
+            </p>
+            
+            <div class="countdown-container">
+                <p class="countdown-text">
+                    <i class="fas fa-clock"></i> 
+                    Please wait <span id="countdown">60</span> seconds for processing to complete
+                </p>
+                <div class="countdown-progress">
+                    <div class="progress-bar" id="progressBar"></div>
+                </div>
+            </div>
+            
+            <button id="viewResultsBtn" class="view-results-btn" disabled>
+                <i class="fas fa-eye"></i> View My Results
+                <span class="btn-subtitle">Available after processing</span>
+            </button>
+            
+            <p class="note">
+                <i class="fas fa-info-circle"></i> 
+                Your results will also be saved to your search history for future reference.
+            </p>
+        </div>
+    `;
+    
+    // Start countdown
+    startResultsCountdown(searchId);
+}
+
+function startResultsCountdown(searchId) {
+    const countdownElement = document.getElementById('countdown');
+    const progressBar = document.getElementById('progressBar');
+    const viewResultsBtn = document.getElementById('viewResultsBtn');
+    
+    let timeLeft = 60;
+    
+    const countdown = setInterval(() => {
+        timeLeft--;
+        countdownElement.textContent = timeLeft;
+        
+        // Update progress bar
+        const progress = ((60 - timeLeft) / 60) * 100;
+        progressBar.style.width = progress + '%';
+        
+        if (timeLeft <= 0) {
+            clearInterval(countdown);
+            
+            // Enable the View Results button
+            viewResultsBtn.disabled = false;
+            viewResultsBtn.classList.add('enabled');
+            viewResultsBtn.innerHTML = `
+                <i class="fas fa-eye"></i> View My Results
+                <span class="btn-subtitle">Ready to view!</span>
+            `;
+            
+            // Update countdown text
+            document.querySelector('.countdown-text').innerHTML = `
+                <i class="fas fa-check-circle" style="color: green;"></i> 
+                Processing complete! Your results are ready.
+            `;
+            
+            // Add click handler
+            viewResultsBtn.addEventListener('click', () => {
+                openResultsPage(searchId);
+            });
+        }
+    }, 1000);
+}
+
+function openResultsPage(searchId) {
+    // Create URL with search parameters
+    const baseUrl = window.location.origin + window.location.pathname.replace('index.html', '');
+    const resultsUrl = `${baseUrl}results.html?searchId=${encodeURIComponent(searchId)}&userId=${encodeURIComponent(currentUserId || 'guest')}`;
+    
+    // Open in new tab
+    window.open(resultsUrl, '_blank');
+}
+
 // --- Search History Functions (Local Storage Based) ---
 
 // Function to add search to local history
@@ -543,19 +652,12 @@ eventForm.addEventListener("submit", async function (e) {
 
         const result = await response.json();
 
-        // Handle the response and display results or a message
-        if (result && result.events) { // AWS API returns events array
-            renderEventCards(resultsDiv, result.events, "No events found for your search criteria.");
-            
-            // Add search to history immediately (if user is logged in and events were found)
-            if (currentUserId && result.events.length > 0) {
-                addSearchToLocalHistory(data, result.events);
-                displayLocalSearchHistory(); // Update history tabs immediately
-            }
-        } else if (result && result.message) {
-            resultsDiv.innerHTML = `<p class="no-results-message">${result.message}</p>`;
+        // Handle the response - show success message and "View Results" button
+        if (response.ok) {
+            // Search was submitted successfully
+            showSearchSubmissionSuccess(data);
         } else {
-            resultsDiv.innerHTML = '<p class="no-results-message">Search request sent! Please check your email for results if provided, or try a different search.</p>';
+            resultsDiv.innerHTML = '<p class="error-message">Search submission failed. Please try again.</p>';
         }
 
     } catch (error) {
