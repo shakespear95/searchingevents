@@ -970,8 +970,32 @@ function loadSearchDetails(searchId, tabElement) {
 eventForm.addEventListener("submit", async function (e) {
     e.preventDefault(); // Prevent default form submission
 
-    // Display a loading message in the results div immediately
-    resultsDiv.innerHTML = '<p class="loading-message">Initiating search... Please wait.</p>';
+    // Show enhanced loading message for AI search
+    resultsDiv.innerHTML = `
+        <div class="ai-search-loading">
+            <div class="loading-spinner-large">
+                <i class="fas fa-robot fa-spin"></i>
+            </div>
+            <h3>🤖 AI Event Discovery in Progress</h3>
+            <p class="ai-search-status" id="searchStatus">Initiating intelligent search...</p>
+            <div class="ai-progress-steps">
+                <div class="progress-step active" id="step1">
+                    <i class="fas fa-search"></i> Scanning event sources
+                </div>
+                <div class="progress-step" id="step2">
+                    <i class="fas fa-brain"></i> AI processing & curation
+                </div>
+                <div class="progress-step" id="step3">
+                    <i class="fas fa-check-circle"></i> Finalizing results
+                </div>
+            </div>
+            <p class="processing-note">
+                <i class="fas fa-info-circle"></i>
+                Our AI is analyzing multiple sources to find the best events for you.<br>
+                This may take 1-2 minutes for optimal results.
+            </p>
+        </div>
+    `;
 
     const data = {
         location: document.getElementById("location").value,
@@ -979,7 +1003,7 @@ eventForm.addEventListener("submit", async function (e) {
         timeframe: document.getElementById("timeframe").value,
         radius: document.getElementById("radius").value,
         keywords: document.getElementById("keywords").value,
-        email: document.getElementById("email").value // Get the email from the new input field
+        email: document.getElementById("email").value
     };
 
     // Close the modal after submission (good UX)
@@ -991,6 +1015,9 @@ eventForm.addEventListener("submit", async function (e) {
     // Show loading overlay BEFORE sending the request
     showLoading();
 
+    // Start progress simulation
+    simulateSearchProgress();
+
     try {
         const headers = { "Content-Type": "application/json" };
 
@@ -1000,11 +1027,18 @@ eventForm.addEventListener("submit", async function (e) {
             headers["Authorization"] = `Bearer ${jwtToken}`;
         }
 
+        // Create AbortController for timeout handling
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
+
         const response = await fetch(eventSearchUrl, {
             method: "POST",
             headers: headers,
-            body: JSON.stringify(data)
+            body: JSON.stringify(data),
+            signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
             const errorText = await response.text();
@@ -1091,12 +1125,116 @@ eventForm.addEventListener("submit", async function (e) {
 
     } catch (error) {
         console.error("Error sending data to AWS API:", error);
-        resultsDiv.innerHTML = '<p class="error-error">An error occurred while fetching events. Please try again later. If the search takes a long time, results might be sent to your email.</p>';
+        
+        // Clear progress simulation
+        if (window.searchProgressInterval) {
+            clearInterval(window.searchProgressInterval);
+        }
+        
+        // Handle different error types
+        if (error.name === 'AbortError') {
+            resultsDiv.innerHTML = `
+                <div class="search-timeout-error">
+                    <div class="error-icon">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <h3>⏰ Search Taking Longer Than Expected</h3>
+                    <p>Our AI is working hard to find the best events for you!</p>
+                    <p>This sometimes happens when processing large amounts of data.</p>
+                    <div class="error-actions">
+                        <button onclick="location.reload()" class="retry-btn">
+                            <i class="fas fa-redo"></i> Try Again
+                        </button>
+                        ${data.email ? `<p><small>Results will be sent to ${data.email} once processing completes.</small></p>` : ''}
+                    </div>
+                </div>
+            `;
+        } else if (error.message.includes('504')) {
+            resultsDiv.innerHTML = `
+                <div class="search-processing-message">
+                    <div class="success-icon">
+                        <i class="fas fa-cogs fa-spin"></i>
+                    </div>
+                    <h3>🤖 Search Still Processing</h3>
+                    <p>Your request is being processed by our AI systems.</p>
+                    <p>Complex searches with 20+ events can take 1-2 minutes to complete.</p>
+                    <div class="processing-actions">
+                        <button onclick="location.reload()" class="retry-btn">
+                            <i class="fas fa-search"></i> Check for Results
+                        </button>
+                    </div>
+                </div>
+            `;
+        } else {
+            resultsDiv.innerHTML = `
+                <div class="search-error">
+                    <div class="error-icon">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <h3>Search Error</h3>
+                    <p>An error occurred while fetching events. Please try again.</p>
+                    <button onclick="location.reload()" class="retry-btn">
+                        <i class="fas fa-redo"></i> Try Again
+                    </button>
+                </div>
+            `;
+        }
     } finally {
         // Hide loading overlay AFTER the fetch call completes (or errors)
         hideLoading();
+        
+        // Clear progress simulation
+        if (window.searchProgressInterval) {
+            clearInterval(window.searchProgressInterval);
+        }
     }
 });
+
+// Function to simulate search progress for better UX
+function simulateSearchProgress() {
+    let step = 1;
+    let timeElapsed = 0;
+    
+    window.searchProgressInterval = setInterval(() => {
+        timeElapsed += 2000; // 2 seconds intervals
+        
+        const statusElement = document.getElementById('searchStatus');
+        if (!statusElement) {
+            clearInterval(window.searchProgressInterval);
+            return;
+        }
+        
+        // Update status based on time elapsed
+        if (timeElapsed <= 10000) { // 0-10 seconds
+            statusElement.textContent = 'Scanning event sources...';
+            updateProgressStep(1);
+        } else if (timeElapsed <= 30000) { // 10-30 seconds
+            statusElement.textContent = 'AI analyzing and curating events...';
+            updateProgressStep(2);
+        } else if (timeElapsed <= 60000) { // 30-60 seconds
+            statusElement.textContent = 'Processing with multiple AI models...';
+            updateProgressStep(2);
+        } else if (timeElapsed <= 90000) { // 60-90 seconds
+            statusElement.textContent = 'Finalizing and structuring results...';
+            updateProgressStep(3);
+        } else { // 90+ seconds
+            statusElement.textContent = 'Almost done - optimizing results...';
+            updateProgressStep(3);
+        }
+    }, 2000);
+}
+
+function updateProgressStep(activeStep) {
+    // Reset all steps
+    document.querySelectorAll('.progress-step').forEach((step, index) => {
+        step.classList.remove('active', 'completed');
+        if (index + 1 < activeStep) {
+            step.classList.add('completed');
+        } else if (index + 1 === activeStep) {
+            step.classList.add('active');
+        }
+    });
+}
 
 // --- Initial Calls ---
 // Initial message for search results div

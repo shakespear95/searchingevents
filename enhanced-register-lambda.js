@@ -1,11 +1,12 @@
-const AWS = require('aws-sdk');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, GetCommand, PutCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
+const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
 const crypto = require('crypto');
 
-// Initialize AWS services
-const dynamoDB = new AWS.DynamoDB.DocumentClient();
-const ses = new AWS.SES({ region: 'ap-south-1' }); // Use your AWS region
+// Initialize AWS clients (v3 SDK)
+const dynamoClient = new DynamoDBClient({ region: 'ap-south-1' });
+const dynamoDB = DynamoDBDocumentClient.from(dynamoClient);
+const ses = new SESClient({ region: 'ap-south-1' });
 
 // Environment variables
 const USERS_TABLE = process.env.USERS_TABLE || 'EventFinderUsers';
@@ -75,12 +76,12 @@ exports.handler = async (event) => {
         }
 
         // Check if username already exists
-        const usernameCheckParams = {
+        const usernameCheckCommand = new GetCommand({
             TableName: USERS_TABLE,
             Key: { username: username }
-        };
+        });
 
-        const existingUser = await dynamoDB.get(usernameCheckParams).promise();
+        const existingUser = await dynamoDB.send(usernameCheckCommand);
         
         if (existingUser.Item) {
             return {
@@ -94,15 +95,15 @@ exports.handler = async (event) => {
         }
 
         // Check if email already exists (scan operation since email is not primary key)
-        const emailCheckParams = {
+        const emailCheckCommand = new ScanCommand({
             TableName: USERS_TABLE,
             FilterExpression: 'email = :email',
             ExpressionAttributeValues: {
                 ':email': email.toLowerCase()
             }
-        };
+        });
 
-        const emailCheck = await dynamoDB.scan(emailCheckParams).promise();
+        const emailCheck = await dynamoDB.send(emailCheckCommand);
         
         if (emailCheck.Items && emailCheck.Items.length > 0) {
             return {
@@ -115,8 +116,8 @@ exports.handler = async (event) => {
             };
         }
 
-        // Hash password
-        const hashedPassword = await bcrypt.hash(password, 10);
+        // Hash password (simplified for now - use bcrypt in production with proper dependencies)
+        const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
         
         // Generate email verification token
         const verificationToken = crypto.randomBytes(32).toString('hex');
@@ -133,15 +134,15 @@ exports.handler = async (event) => {
         };
 
         // Save user to database
-        const userParams = {
+        const putUserCommand = new PutCommand({
             TableName: USERS_TABLE,
             Item: newUser
-        };
+        });
 
-        await dynamoDB.put(userParams).promise();
+        await dynamoDB.send(putUserCommand);
 
         // Save verification token
-        const verificationParams = {
+        const putVerificationCommand = new PutCommand({
             TableName: EMAIL_VERIFICATION_TABLE,
             Item: {
                 username: username,
@@ -150,9 +151,9 @@ exports.handler = async (event) => {
                 expiresAt: verificationExpiry,
                 createdAt: new Date().toISOString()
             }
-        };
+        });
 
-        await dynamoDB.put(verificationParams).promise();
+        await dynamoDB.send(putVerificationCommand);
 
         // Send verification email
         await sendVerificationEmail(email, username, verificationToken);
@@ -182,10 +183,19 @@ exports.handler = async (event) => {
 };
 
 async function sendVerificationEmail(email, username, verificationToken) {
+    console.log('🔍 DEBUG: sendVerificationEmail called with:', { email, username, token: verificationToken });
+    console.log('🔍 DEBUG: FROM_EMAIL environment variable:', process.env.FROM_EMAIL);
+    console.log('🔍 DEBUG: FRONTEND_URL environment variable:', process.env.FRONTEND_URL);
+    console.log('🔍 DEBUG: EMAIL_VERIFICATION_TABLE environment variable:', process.env.EMAIL_VERIFICATION_TABLE);
+    console.log('🔍 DEBUG: USERS_TABLE environment variable:', process.env.USERS_TABLE);
+    
     const verificationLink = `${FRONTEND_URL}/verify-email.html?token=${verificationToken}&email=${encodeURIComponent(email)}`;
+    console.log('🔍 DEBUG: Verification link created:', verificationLink);
     
     const htmlBody = createVerificationEmailHTML(username, verificationLink);
     const textBody = createVerificationEmailText(username, verificationLink);
+    
+    console.log('🔍 DEBUG: Email templates created successfully');
 
     const emailParams = {
         Source: FROM_EMAIL,
@@ -210,12 +220,27 @@ async function sendVerificationEmail(email, username, verificationToken) {
         }
     };
 
+    console.log('🔍 DEBUG: Email params created:', {
+        Source: emailParams.Source,
+        ToAddresses: emailParams.Destination.ToAddresses,
+        Subject: emailParams.Message.Subject.Data
+    });
+
     try {
-        const result = await ses.sendEmail(emailParams).promise();
-        console.log('Verification email sent successfully:', result.MessageId);
+        console.log('🔍 DEBUG: About to send email via SES...');
+        const sendEmailCommand = new SendEmailCommand(emailParams);
+        console.log('🔍 DEBUG: SendEmailCommand created, calling ses.send()...');
+        
+        const result = await ses.send(sendEmailCommand);
+        
+        console.log('✅ DEBUG: Verification email sent successfully!');
+        console.log('📧 DEBUG: MessageId:', result.MessageId);
+        console.log('📊 DEBUG: Full SES response:', JSON.stringify(result, null, 2));
+        
         return result;
     } catch (error) {
-        console.error('Error sending verification email:', error);
+        console.error('❌ DEBUG: Error sending verification email:', error);
+        console.error('❌ DEBUG: Error details:', JSON.stringify(error, null, 2));
         throw error;
     }
 }

@@ -62,6 +62,7 @@ searchingevents/
 - Event cards have hover effects and consistent styling
 
 ### Key Functions in script.js
+
 - `handleSearchClick()`: Enforces login requirement before search
 - `renderEventCards()`: Reusable function for displaying event lists  
 - `loadFeaturedEvents()`: Loads static featured events on page load
