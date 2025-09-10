@@ -508,12 +508,27 @@ loginForm.addEventListener('submit', async (e) => {
     const username = e.target.loginUsername.value;
     const password = e.target.loginPassword.value;
 
+    // Debug logging
+    console.log('Login attempt:', { 
+        username, 
+        passwordLength: password.length,
+        endpoint: `${AWS_API_BASE_URL}/login`
+    });
+
     try {
         const response = await fetch(`${AWS_API_BASE_URL}/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password })
         });
+        
+        console.log('Login response status:', response.status);
+        
+        // Log response details
+        const responseClone = response.clone();
+        const responseText = await responseClone.text();
+        console.log('Login response body:', responseText);
+        
         await handleAuthResponse(response);
     } catch (error) {
         console.error('Login error:', error);
