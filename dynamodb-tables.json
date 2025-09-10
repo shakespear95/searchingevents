@@ -1,0 +1,123 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "DynamoDB tables for EventFinder authentication with email verification",
+  
+  "Resources": {
+    "EventFinderUsersTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "TableName": "EventFinderUsers",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "username",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "username",
+            "KeyType": "HASH"
+          }
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true
+        },
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "EventFinder"
+          },
+          {
+            "Key": "Environment",
+            "Value": "Production"
+          }
+        ]
+      }
+    },
+    
+    "EventFinderEmailVerificationTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "TableName": "EventFinderEmailVerification",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "username",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "email",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "username",
+            "KeyType": "HASH"
+          },
+          {
+            "AttributeName": "email",
+            "KeyType": "RANGE"
+          }
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "TimeToLiveSpecification": {
+          "AttributeName": "expiresAt",
+          "Enabled": true
+        },
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "EventFinder"
+          },
+          {
+            "Key": "Environment",
+            "Value": "Production"
+          }
+        ]
+      }
+    }
+  },
+  
+  "Outputs": {
+    "UsersTableName": {
+      "Description": "Name of the EventFinder Users table",
+      "Value": {
+        "Ref": "EventFinderUsersTable"
+      },
+      "Export": {
+        "Name": "EventFinder-UsersTable"
+      }
+    },
+    
+    "UsersTableArn": {
+      "Description": "ARN of the EventFinder Users table",
+      "Value": {
+        "Fn::GetAtt": ["EventFinderUsersTable", "Arn"]
+      },
+      "Export": {
+        "Name": "EventFinder-UsersTableArn"
+      }
+    },
+    
+    "EmailVerificationTableName": {
+      "Description": "Name of the EventFinder Email Verification table",
+      "Value": {
+        "Ref": "EventFinderEmailVerificationTable"
+      },
+      "Export": {
+        "Name": "EventFinder-EmailVerificationTable"
+      }
+    },
+    
+    "EmailVerificationTableArn": {
+      "Description": "ARN of the EventFinder Email Verification table",
+      "Value": {
+        "Fn::GetAtt": ["EventFinderEmailVerificationTable", "Arn"]
+      },
+      "Export": {
+        "Name": "EventFinder-EmailVerificationTableArn"
+      }
+    }
+  }
+}

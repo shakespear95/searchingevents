@@ -305,31 +305,134 @@ function updateAuthUI() {
 async function handleAuthResponse(response) {
     const data = await response.json();
     if (response.ok) {
-        setToken(data.token);
-        
-        // Extract user ID from the response or JWT token
-        if (data.username) {
-            currentUserId = data.username; // Use username as user ID
-        } else {
-            // Fallback: extract username from JWT token
-            currentUserId = getUsernameFromToken(data.token);
+        // Handle successful registration requiring verification
+        if (data.requiresVerification) {
+            authMessage.innerHTML = `
+                <div style="text-align: left;">
+                    <i class="fas fa-check-circle" style="color: green;"></i> 
+                    <strong>Account created successfully!</strong><br>
+                    <small>📧 Please check your email and click the verification link to complete registration.</small><br>
+                    <small>Email: ${data.email}</small>
+                </div>
+            `;
+            authMessage.style.color = 'green';
+            
+            // Add resend verification button
+            setTimeout(() => {
+                authMessage.innerHTML += `
+                    <div style="margin-top: 15px;">
+                        <button id="resendVerificationBtn" style="background: linear-gradient(135deg, #6c757d, #5a6268); color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 12px;">
+                            <i class="fas fa-paper-plane"></i> Resend Verification Email
+                        </button>
+                    </div>
+                `;
+                
+                // Add event listener for resend button
+                const resendBtn = document.getElementById('resendVerificationBtn');
+                if (resendBtn) {
+                    resendBtn.addEventListener('click', () => resendVerificationEmail(data.email));
+                }
+            }, 1000);
+            return;
         }
         
-        authMessage.textContent = 'Success! Logging in...';
-        authMessage.style.color = 'green';
-        setTimeout(() => {
-            loginSignupModal.style.display = 'none';
-            updateAuthUI();
-            authMessage.textContent = ''; // Clear message
+        // Handle successful login with token
+        if (data.token) {
+            setToken(data.token);
             
-            // Load local search history after successful login
-            if (currentUserId) {
-                displayLocalSearchHistory();
+            // Extract user ID from the response or JWT token
+            if (data.username) {
+                currentUserId = data.username; // Use username as user ID
+            } else {
+                // Fallback: extract username from JWT token
+                currentUserId = getUsernameFromToken(data.token);
             }
-        }, 1000);
+            
+            authMessage.textContent = 'Success! Logging in...';
+            authMessage.style.color = 'green';
+            setTimeout(() => {
+                loginSignupModal.style.display = 'none';
+                updateAuthUI();
+                authMessage.textContent = ''; // Clear message
+                
+                // Load local search history after successful login
+                if (currentUserId) {
+                    displayLocalSearchHistory();
+                }
+            }, 1000);
+        }
     } else {
+        // Handle login requiring verification
+        if (data.requiresVerification) {
+            authMessage.innerHTML = `
+                <div style="text-align: left;">
+                    <i class="fas fa-exclamation-triangle" style="color: orange;"></i> 
+                    <strong>Email verification required</strong><br>
+                    <small>📧 Please check your email and click the verification link before logging in.</small><br>
+                    <small>Email: ${data.email}</small>
+                    <div style="margin-top: 10px;">
+                        <button id="resendVerificationBtn" style="background: linear-gradient(135deg, #6c757d, #5a6268); color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 12px;">
+                            <i class="fas fa-paper-plane"></i> Resend Verification Email
+                        </button>
+                    </div>
+                </div>
+            `;
+            authMessage.style.color = 'orange';
+            
+            // Add event listener for resend button
+            setTimeout(() => {
+                const resendBtn = document.getElementById('resendVerificationBtn');
+                if (resendBtn) {
+                    resendBtn.addEventListener('click', () => resendVerificationEmail(data.email));
+                }
+            }, 100);
+            return;
+        }
+        
         authMessage.textContent = data.message || 'Authentication failed.';
         authMessage.style.color = 'red';
+    }
+}
+
+// Function to resend verification email
+async function resendVerificationEmail(email) {
+    const resendBtn = document.getElementById('resendVerificationBtn');
+    if (!resendBtn) return;
+    
+    const originalText = resendBtn.innerHTML;
+    resendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+    resendBtn.disabled = true;
+    
+    try {
+        const response = await fetch(`${AWS_API_BASE_URL}/resend-verification`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            resendBtn.innerHTML = '<i class="fas fa-check"></i> Email Sent!';
+            resendBtn.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+        } else {
+            resendBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Failed';
+            resendBtn.style.background = 'linear-gradient(135deg, #dc3545, #e74c3c)';
+        }
+        
+        setTimeout(() => {
+            resendBtn.innerHTML = originalText;
+            resendBtn.disabled = false;
+            resendBtn.style.background = 'linear-gradient(135deg, #6c757d, #5a6268)';
+        }, 3000);
+        
+    } catch (error) {
+        console.error('Resend verification error:', error);
+        resendBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error';
+        setTimeout(() => {
+            resendBtn.innerHTML = originalText;
+            resendBtn.disabled = false;
+        }, 3000);
     }
 }
 
@@ -419,21 +522,186 @@ loginForm.addEventListener('submit', async (e) => {
     }
 });
 
+// Email validation function
+function isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+}
+
+// Password strength validation function
+function isValidPassword(password) {
+    return password.length >= 8;
+}
+
+// Username validation function  
+function isValidUsername(username) {
+    const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
+    return usernameRegex.test(username);
+}
+
+// Function to show validation error
+function showValidationError(message) {
+    authMessage.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${message}`;
+    authMessage.style.color = 'red';
+}
+
+// Real-time field validation
+function setupFieldValidation() {
+    // Get form fields
+    const signupEmailField = document.getElementById('signupEmail');
+    const signupUsernameField = document.getElementById('signupUsername');
+    const signupPasswordField = document.getElementById('signupPassword');
+    const confirmPasswordField = document.getElementById('confirmPassword');
+    
+    // Email field validation
+    if (signupEmailField) {
+        signupEmailField.addEventListener('blur', function() {
+            const email = this.value.trim();
+            if (email && !isValidEmail(email)) {
+                this.style.borderColor = '#dc3545';
+                this.style.boxShadow = '0 0 0 0.2rem rgba(220, 53, 69, 0.25)';
+            } else {
+                this.style.borderColor = '';
+                this.style.boxShadow = '';
+            }
+        });
+
+        signupEmailField.addEventListener('input', function() {
+            if (this.style.borderColor === 'rgb(220, 53, 69)') {
+                const email = this.value.trim();
+                if (isValidEmail(email)) {
+                    this.style.borderColor = '';
+                    this.style.boxShadow = '';
+                }
+            }
+        });
+    }
+
+    // Username field validation
+    if (signupUsernameField) {
+        signupUsernameField.addEventListener('blur', function() {
+            const username = this.value.trim();
+            if (username && !isValidUsername(username)) {
+                this.style.borderColor = '#dc3545';
+                this.style.boxShadow = '0 0 0 0.2rem rgba(220, 53, 69, 0.25)';
+            } else {
+                this.style.borderColor = '';
+                this.style.boxShadow = '';
+            }
+        });
+
+        signupUsernameField.addEventListener('input', function() {
+            if (this.style.borderColor === 'rgb(220, 53, 69)') {
+                const username = this.value.trim();
+                if (isValidUsername(username)) {
+                    this.style.borderColor = '';
+                    this.style.boxShadow = '';
+                }
+            }
+        });
+    }
+
+    // Password field validation
+    if (signupPasswordField) {
+        signupPasswordField.addEventListener('blur', function() {
+            const password = this.value;
+            if (password && !isValidPassword(password)) {
+                this.style.borderColor = '#dc3545';
+                this.style.boxShadow = '0 0 0 0.2rem rgba(220, 53, 69, 0.25)';
+            } else {
+                this.style.borderColor = '';
+                this.style.boxShadow = '';
+            }
+        });
+
+        signupPasswordField.addEventListener('input', function() {
+            if (this.style.borderColor === 'rgb(220, 53, 69)') {
+                const password = this.value;
+                if (isValidPassword(password)) {
+                    this.style.borderColor = '';
+                    this.style.boxShadow = '';
+                }
+            }
+        });
+    }
+
+    // Confirm password field validation
+    if (confirmPasswordField && signupPasswordField) {
+        confirmPasswordField.addEventListener('blur', function() {
+            const password = signupPasswordField.value;
+            const confirmPassword = this.value;
+            if (confirmPassword && password !== confirmPassword) {
+                this.style.borderColor = '#dc3545';
+                this.style.boxShadow = '0 0 0 0.2rem rgba(220, 53, 69, 0.25)';
+            } else {
+                this.style.borderColor = '';
+                this.style.boxShadow = '';
+            }
+        });
+
+        confirmPasswordField.addEventListener('input', function() {
+            if (this.style.borderColor === 'rgb(220, 53, 69)') {
+                const password = signupPasswordField.value;
+                const confirmPassword = this.value;
+                if (password === confirmPassword) {
+                    this.style.borderColor = '';
+                    this.style.boxShadow = '';
+                }
+            }
+        });
+    }
+}
+
 signupForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    authMessage.textContent = 'Registering...';
-    authMessage.style.color = 'white';
-
-    const username = e.target.signupUsername.value;
-    const email = e.target.signupEmail.value;
+    
+    const username = e.target.signupUsername.value.trim();
+    const email = e.target.signupEmail.value.trim().toLowerCase();
     const password = e.target.signupPassword.value;
     const confirmPassword = e.target.confirmPassword.value;
 
-    if (password !== confirmPassword) {
-        authMessage.textContent = 'Passwords do not match!';
-        authMessage.style.color = 'red';
+    // Clear previous messages
+    authMessage.textContent = '';
+
+    // Frontend validation checks
+    if (!username) {
+        showValidationError('Username is required');
         return;
     }
+
+    if (!isValidUsername(username)) {
+        showValidationError('Username must be 3-20 characters long and contain only letters, numbers, and underscores');
+        return;
+    }
+
+    if (!email) {
+        showValidationError('Email address is required');
+        return;
+    }
+
+    if (!isValidEmail(email)) {
+        showValidationError('Please enter a valid email address (e.g., user@example.com)');
+        return;
+    }
+
+    if (!password) {
+        showValidationError('Password is required');
+        return;
+    }
+
+    if (!isValidPassword(password)) {
+        showValidationError('Password must be at least 8 characters long');
+        return;
+    }
+
+    if (password !== confirmPassword) {
+        showValidationError('Passwords do not match!');
+        return;
+    }
+
+    // All validations passed - proceed with registration
+    authMessage.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating your account...';
+    authMessage.style.color = 'white';
 
     try {
         const response = await fetch(`${AWS_API_BASE_URL}/register`, {
@@ -441,11 +709,10 @@ signupForm.addEventListener('submit', async (e) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, email, password })
         });
-        await handleAuthResponse(response); // Reuse handler for login on successful signup
+        await handleAuthResponse(response);
     } catch (error) {
         console.error('Signup error:', error);
-        authMessage.textContent = 'Network error during signup.';
-        authMessage.style.color = 'red';
+        showValidationError('Network error during signup. Please try again.');
     }
 });
 
@@ -840,6 +1107,9 @@ loadFeaturedEvents();
 
 // Initial UI update for auth status and search history
 updateAuthUI();
+
+// Setup field validation for signup form
+setupFieldValidation();
 
 // If user is already logged in (token exists), set currentUserId and load search history
 console.log('DEBUG: Checking if user is logged in on page load');
