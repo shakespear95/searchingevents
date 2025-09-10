@@ -1009,8 +1009,8 @@ eventForm.addEventListener("submit", async function (e) {
     // Close the modal after submission (good UX)
     searchModal.style.display = 'none';
 
-    // Use AWS API endpoint for async event search submission
-    const submitSearchUrl = `${AWS_API_BASE_URL}/submit-search`;
+    // TEMPORARY: Use existing endpoint until async deployment complete
+    const submitSearchUrl = `${AWS_API_BASE_URL}/search-events`;
 
     // Show loading overlay BEFORE sending the request
     showLoading();
@@ -1042,8 +1042,9 @@ eventForm.addEventListener("submit", async function (e) {
         const result = await response.json();
         console.log('Search submission response:', result);
 
-        // Handle successful submission - start polling for results
+        // Handle response based on type (async with requestId OR direct results)
         if (response.ok && result.success && result.requestId) {
+            // ASYNC RESPONSE: New async pattern with polling
             console.log('Search submitted successfully, requestId:', result.requestId);
             
             // Store request info for polling
@@ -1070,6 +1071,49 @@ eventForm.addEventListener("submit", async function (e) {
             
             // Start polling for results
             startPollingForResults(result.requestId, data);
+            
+        } else if (response.ok && (result.events || result.body)) {
+            // DIRECT RESPONSE: Old synchronous pattern with immediate results
+            console.log('Search response received (direct):', result);
+            
+            // Parse the result.body if it exists (Lambda function returns body as string)
+            let parsedResult = result;
+            if (result.body && typeof result.body === 'string') {
+                try {
+                    parsedResult = JSON.parse(result.body);
+                    console.log('Parsed result from body:', parsedResult);
+                } catch (parseError) {
+                    console.error('Failed to parse result.body:', parseError);
+                    parsedResult = result;
+                }
+            }
+            
+            // Store the search results for the results page
+            if (parsedResult.events && parsedResult.events.length > 0) {
+                // Clean up the events data (remove ** prefixes)
+                const cleanedEvents = parsedResult.events.map(event => ({
+                    ...event,
+                    date: event.date ? event.date.replace(/^\*\* /, '') : event.date,
+                    location: event.location ? event.location.replace(/^\*\* /, '') : event.location,
+                    description: event.description || `${event.name} - A great event happening in ${parsedResult.searchLocation || data.location || 'the area'}!`
+                }));
+                
+                const searchResults = {
+                    events: cleanedEvents,
+                    searchLocation: parsedResult.searchLocation,
+                    searchParams: data,
+                    searchDate: new Date().toISOString(),
+                    totalEvents: parsedResult.totalEvents
+                };
+                
+                // Store in localStorage for the results page
+                localStorage.setItem('latestSearchResults', JSON.stringify(searchResults));
+                
+                showSearchSubmissionSuccess(data, cleanedEvents);
+            } else {
+                console.log('No events received from direct response, showing no results message');
+                showNoEventsFound(data);
+            }
             
         } else {
             throw new Error('Failed to submit search: ' + (result.message || 'Unknown error'));
