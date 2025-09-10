@@ -526,8 +526,13 @@ loginForm.addEventListener('submit', async (e) => {
         
         // Log response details
         const responseClone = response.clone();
-        const responseText = await responseClone.text();
-        console.log('Login response body:', responseText);
+        try {
+            const responseJson = await responseClone.json();
+            console.log('Login response JSON:', responseJson);
+        } catch (jsonError) {
+            const responseText = await responseClone.text();
+            console.log('Login response body (raw):', responseText);
+        }
         
         await handleAuthResponse(response);
     } catch (error) {
