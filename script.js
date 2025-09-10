@@ -1042,8 +1042,18 @@ eventForm.addEventListener("submit", async function (e) {
             throw new Error(`HTTP error submitting search: ${response.status}, message: ${errorText}`);
         }
 
-        const result = await response.json();
-        console.log('Search submission response:', result);
+        let result;
+        try {
+            result = await response.json();
+            console.log('Search submission response:', result);
+        } catch (parseError) {
+            console.error('Failed to parse JSON response:', parseError);
+            const responseText = await response.text();
+            console.log('Raw response text:', responseText);
+            throw new Error('Invalid JSON response from server');
+        }
+        console.log('Response status:', response.status);
+        console.log('Response headers:', [...response.headers.entries()]);
 
         // Handle response based on type (async with requestId OR direct results)
         if (response.ok && result.success && result.requestId) {
