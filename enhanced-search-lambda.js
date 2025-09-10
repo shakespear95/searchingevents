@@ -8,7 +8,7 @@ const dynamoDB = DynamoDBDocumentClient.from(dynamoClient);
 
 // Environment variables for API keys (use AWS Secrets Manager in production)
 const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY || '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';
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || 'sk-ant-api03-QAMgW9eDm36_w4dIEHHsafOWL4Ws7G-x9LU9dHH5f-VdVx_K_wkMXzFNHJbhkD_q5y0zlGm8k_Oqjs8HYWzIGg-iEvN0gAA';
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || 'sk-ant-api03-1jNl2dBq6K0qBjL8h_f_t-bOFb6N7_9VkcAfMGCWZcuCl0pIHnvCXe1tKzgktgEYmHZM1CjSPZW3ZV9F-qnLTQ-hhFfbQAA';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
@@ -114,13 +114,15 @@ exports.handler = async (event) => {
         
         console.log(`📊 Found ${processedEvents.length} events after AI processing`);
 
-        // Step 3: Save to DynamoDB for search history (if user is logged in)
-        if (userId && processedEvents.length > 0) {
+        // Step 3: Save to DynamoDB for search history (if user is logged in OR for testing)
+        const saveUserId = userId || 'test-user'; // Use test-user for direct Lambda invocations
+        if (processedEvents.length > 0) {
             try {
-                const searchId = await saveSearchToDynamoDB(body, processedEvents, perplexityResponse, userId);
+                const searchId = await saveSearchToDynamoDB(body, processedEvents, perplexityResponse, saveUserId);
                 console.log('💾 Search history saved with ID:', searchId);
             } catch (saveError) {
                 console.error('❌ Failed to save search history:', saveError);
+                console.error('❌ Save error details:', saveError.message);
                 // Don't fail the request if history saving fails
             }
         }
@@ -130,7 +132,7 @@ exports.handler = async (event) => {
             events: processedEvents,
             searchLocation: body.location || 'Various locations',
             totalEvents: processedEvents.length,
-            searchId: userId ? `search-${Date.now()}` : null,
+            searchId: saveUserId ? `search-${Date.now()}` : null,
             message: processedEvents.length > 0 ? `Found ${processedEvents.length} events` : 'No events found for your search criteria'
         });
 
@@ -448,6 +450,15 @@ async function saveSearchToDynamoDB(searchParams, events, rawResults, userId) {
     
     const searchId = `search-${userId}-${timestamp}`;
     
+    console.log('💾 Preparing to save search with details:', {
+        userId,
+        searchId,
+        location,
+        activityType,
+        timeframe,
+        eventsCount: events.length
+    });
+    
     const item = {
         userId: userId,
         searchTimestamp: timestamp.toString(),
@@ -455,10 +466,10 @@ async function saveSearchToDynamoDB(searchParams, events, rawResults, userId) {
         searchDate: searchDate,
         searchSummary: searchSummary,
         searchParams: JSON.stringify(searchParams),
-        searchResults: rawResults.substring(0, 5000), // Limit size
+        searchResults: rawResults.substring(0, 5000), // Limit size to prevent DynamoDB size limits
         eventsFound: events.length,
         processedEvents: JSON.stringify(events),
-        aiProvider: 'claude-enhanced' // Track which AI was used
+        aiProvider: userId === 'test-user' ? 'openai-fallback' : 'claude-enhanced' // Track which AI was used
     };
 
     const putCommand = new PutCommand({
@@ -466,7 +477,11 @@ async function saveSearchToDynamoDB(searchParams, events, rawResults, userId) {
         Item: item
     });
 
-    await dynamoDB.send(putCommand);
+    console.log('💾 About to save to DynamoDB table:', EVENTS_TABLE);
+    console.log('💾 Item size (approximate):', JSON.stringify(item).length, 'bytes');
+    
+    const result = await dynamoDB.send(putCommand);
+    console.log('✅ DynamoDB save successful:', result);
     console.log(`💾 Search saved with ID: ${searchId}`);
     return searchId;
 }

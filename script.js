@@ -1145,24 +1145,35 @@ eventForm.addEventListener("submit", async function (e) {
                         <button onclick="location.reload()" class="retry-btn">
                             <i class="fas fa-redo"></i> Try Again
                         </button>
-                        ${data.email ? `<p><small>Results will be sent to ${data.email} once processing completes.</small></p>` : ''}
+                        ${document.getElementById("email").value ? `<p><small>Results will be sent to ${document.getElementById("email").value} once processing completes.</small></p>` : ''}
                     </div>
                 </div>
             `;
-        } else if (error.message.includes('504')) {
+        } else if (error.message.includes('504') || error.message.includes('Gateway Timeout')) {
             resultsDiv.innerHTML = `
                 <div class="search-processing-message">
                     <div class="success-icon">
                         <i class="fas fa-cogs fa-spin"></i>
                     </div>
-                    <h3>🤖 Search Still Processing</h3>
-                    <p>Your request is being processed by our AI systems.</p>
+                    <h3>🤖 Advanced AI Search in Progress</h3>
+                    <p>Your search is being processed by our multi-AI system (Claude + OpenAI + Perplexity).</p>
                     <p>Complex searches with 20+ events can take 1-2 minutes to complete.</p>
+                    <p><strong>Your search is still running in the background!</strong></p>
+                    ${document.getElementById("email").value ? `
+                        <div class="email-notification">
+                            <i class="fas fa-envelope"></i>
+                            <p>Results will be sent to <strong>${document.getElementById("email").value}</strong> once processing completes.</p>
+                        </div>
+                    ` : ''}
                     <div class="processing-actions">
+                        <button onclick="setTimeout(() => location.reload(), 30000)" class="retry-btn">
+                            <i class="fas fa-clock"></i> Check Results in 30s
+                        </button>
                         <button onclick="location.reload()" class="retry-btn">
-                            <i class="fas fa-search"></i> Check for Results
+                            <i class="fas fa-search"></i> Check Now
                         </button>
                     </div>
+                    <p><small><i class="fas fa-info-circle"></i> Note: Our AI system processes 3x more sources than standard search engines</small></p>
                 </div>
             `;
         } else {
