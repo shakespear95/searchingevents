@@ -1009,8 +1009,8 @@ eventForm.addEventListener("submit", async function (e) {
     // Close the modal after submission (good UX)
     searchModal.style.display = 'none';
 
-    // Use AWS API endpoint for event search
-    const eventSearchUrl = `${AWS_API_BASE_URL}/search-events`;
+    // Use AWS API endpoint for async event search submission
+    const submitSearchUrl = `${AWS_API_BASE_URL}/submit-search`;
 
     // Show loading overlay BEFORE sending the request
     showLoading();
@@ -1021,106 +1021,58 @@ eventForm.addEventListener("submit", async function (e) {
     try {
         const headers = { "Content-Type": "application/json" };
 
-        // NEW: Get JWT and add to headers if user is logged in
+        // Get JWT and add to headers if user is logged in
         const jwtToken = getToken();
         if (jwtToken) {
             headers["Authorization"] = `Bearer ${jwtToken}`;
         }
 
-        // Create AbortController for timeout handling
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
-
-        const response = await fetch(eventSearchUrl, {
+        // Submit search asynchronously - this should return immediately with requestId
+        const response = await fetch(submitSearchUrl, {
             method: "POST",
             headers: headers,
-            body: JSON.stringify(data),
-            signal: controller.signal
+            body: JSON.stringify(data)
         });
-
-        clearTimeout(timeoutId);
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`HTTP error sending to AWS API: ${response.status}, message: ${errorText}`);
+            throw new Error(`HTTP error submitting search: ${response.status}, message: ${errorText}`);
         }
 
         const result = await response.json();
+        console.log('Search submission response:', result);
 
-        // Handle the response - show success message and "View Results" button
-        if (response.ok) {
-            console.log('Search response received:', result);
+        // Handle successful submission - start polling for results
+        if (response.ok && result.success && result.requestId) {
+            console.log('Search submitted successfully, requestId:', result.requestId);
             
-            // Parse the result.body if it exists (Lambda function returns body as string)
-            let parsedResult = result;
-            if (result.body && typeof result.body === 'string') {
-                try {
-                    parsedResult = JSON.parse(result.body);
-                    console.log('Parsed result from body:', parsedResult);
-                } catch (parseError) {
-                    console.error('Failed to parse result.body:', parseError);
-                    parsedResult = result;
-                }
-            }
+            // Store request info for polling
+            window.currentSearchId = result.requestId;
+            window.searchStartTime = Date.now();
             
-            // Store the search results for the results page
-            if (parsedResult.events && parsedResult.events.length > 0) {
-                // Clean up the events data (remove ** prefixes)
-                const cleanedEvents = parsedResult.events.map(event => ({
-                    ...event,
-                    date: event.date ? event.date.replace(/^\*\* /, '') : event.date,
-                    location: event.location ? event.location.replace(/^\*\* /, '') : event.location,
-                    description: event.description || `${event.name} - A great event happening in ${parsedResult.searchLocation || data.location || 'the area'}!`
-                }));
-                
-                const searchResults = {
-                    events: cleanedEvents,
-                    searchLocation: parsedResult.searchLocation,
-                    searchParams: data,
-                    searchDate: new Date().toISOString(),
-                    totalEvents: parsedResult.totalEvents
-                };
-                
-                // Store in localStorage for the results page
-                localStorage.setItem('latestSearchResults', JSON.stringify(searchResults));
-                
-                showSearchSubmissionSuccess(data, cleanedEvents);
-            } else {
-                console.log('No events received, creating sample events for testing');
-                
-                // TEMPORARY: Create sample events when API fails
-                const sampleEvents = [
-                    {
-                        name: `${data.activity_type || 'Events'} in ${data.location}`,
-                        description: `Exciting ${data.activity_type || 'events'} happening ${data.timeframe || 'soon'} in the ${data.location} area. Perfect for discovering new experiences!`,
-                        date: `${data.timeframe || 'Soon'}`,
-                        location: data.location || 'Local venue',
-                        price: 'Varies',
-                        source: ''
-                    },
-                    {
-                        name: `Local ${data.keywords || 'Entertainment'} Event`,
-                        description: `Community gathering focused on ${data.keywords || 'entertainment'} with great atmosphere and local participation.`,
-                        date: 'Weekend',
-                        location: `${data.location} community center`,
-                        price: 'Free - €20',
-                        source: ''
-                    }
-                ];
-                
-                const searchResults = {
-                    events: sampleEvents,
-                    searchLocation: data.location,
-                    searchParams: data,
-                    searchDate: new Date().toISOString(),
-                    totalEvents: sampleEvents.length
-                };
-                
-                localStorage.setItem('latestSearchResults', JSON.stringify(searchResults));
-                showSearchSubmissionSuccess(data, sampleEvents);
-            }
+            // Update UI to show polling in progress
+            resultsDiv.innerHTML = `
+                <div class="search-polling-message">
+                    <div class="success-icon">
+                        <i class="fas fa-hourglass-half fa-spin"></i>
+                    </div>
+                    <h3>🤖 AI Search Processing</h3>
+                    <p>Your search has been submitted successfully!</p>
+                    <p id="pollingStatus">Checking for results...</p>
+                    <div class="polling-progress">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="pollingProgress"></div>
+                        </div>
+                        <p class="polling-info">Request ID: <code>${result.requestId}</code></p>
+                    </div>
+                </div>
+            `;
+            
+            // Start polling for results
+            startPollingForResults(result.requestId, data);
+            
         } else {
-            resultsDiv.innerHTML = '<p class="error-message">Search submission failed. Please try again.</p>';
+            throw new Error('Failed to submit search: ' + (result.message || 'Unknown error'));
         }
 
     } catch (error) {
@@ -1245,6 +1197,275 @@ function updateProgressStep(activeStep) {
             step.classList.add('active');
         }
     });
+}
+
+// --- Async Search Polling Functions ---
+
+async function startPollingForResults(requestId, originalSearchParams) {
+    console.log('Starting to poll for results with requestId:', requestId);
+    
+    let pollCount = 0;
+    const maxPollCount = 36; // Poll for max 6 minutes (36 * 10 seconds)
+    const pollInterval = 10000; // 10 seconds
+    
+    const pollForResults = async () => {
+        pollCount++;
+        console.log(`Polling attempt ${pollCount}/${maxPollCount}`);
+        
+        try {
+            const getResultsUrl = `${AWS_API_BASE_URL}/get-results?requestId=${requestId}`;
+            const headers = { "Content-Type": "application/json" };
+            
+            // Add auth header if available
+            const jwtToken = getToken();
+            if (jwtToken) {
+                headers["Authorization"] = `Bearer ${jwtToken}`;
+            }
+            
+            const response = await fetch(getResultsUrl, {
+                method: "GET",
+                headers: headers
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Failed to get results: ${response.status}`);
+            }
+            
+            const result = await response.json();
+            console.log('Polling response:', result);
+            
+            // Update polling status
+            const statusElement = document.getElementById('pollingStatus');
+            const progressElement = document.getElementById('pollingProgress');
+            
+            if (result.status === 'processing') {
+                // Still processing - update UI and continue polling
+                if (statusElement) {
+                    statusElement.textContent = result.progressUpdate || 'Still processing...';
+                }
+                if (progressElement) {
+                    const progressPercent = Math.min(90, (pollCount / maxPollCount) * 100);
+                    progressElement.style.width = `${progressPercent}%`;
+                }
+                
+                // Continue polling if under max attempts
+                if (pollCount < maxPollCount) {
+                    setTimeout(pollForResults, pollInterval);
+                } else {
+                    // Max attempts reached
+                    handlePollingTimeout(requestId, originalSearchParams);
+                }
+                
+            } else if (result.status === 'completed') {
+                // Search completed successfully!
+                console.log('Search completed! Events found:', result.events?.length || 0);
+                
+                if (progressElement) {
+                    progressElement.style.width = '100%';
+                }
+                
+                // Process and display results
+                if (result.events && result.events.length > 0) {
+                    // Clean up the events data
+                    const cleanedEvents = result.events.map(event => ({
+                        ...event,
+                        date: event.date ? event.date.replace(/^\*\* /, '') : event.date,
+                        location: event.location ? event.location.replace(/^\*\* /, '') : event.location,
+                        description: event.description || `${event.name} - A great event happening in ${originalSearchParams.location || 'the area'}!`
+                    }));
+                    
+                    const searchResults = {
+                        events: cleanedEvents,
+                        searchLocation: originalSearchParams.location,
+                        searchParams: originalSearchParams,
+                        searchDate: new Date().toISOString(),
+                        totalEvents: cleanedEvents.length,
+                        requestId: requestId
+                    };
+                    
+                    // Store in localStorage
+                    localStorage.setItem('latestSearchResults', JSON.stringify(searchResults));
+                    
+                    // Show success message
+                    showSearchSubmissionSuccess(originalSearchParams, cleanedEvents);
+                    
+                } else {
+                    // No events found
+                    showNoEventsFound(originalSearchParams);
+                }
+                
+                // Clear polling state
+                window.currentSearchId = null;
+                window.searchStartTime = null;
+                
+            } else if (result.status === 'failed') {
+                // Search failed
+                console.error('Search failed:', result.error);
+                handlePollingError(requestId, result.error || 'Search processing failed');
+                
+            } else {
+                console.error('Unknown search status:', result.status);
+                handlePollingError(requestId, `Unknown status: ${result.status}`);
+            }
+            
+        } catch (error) {
+            console.error('Polling error:', error);
+            
+            // Continue polling on network errors, stop on other errors
+            if (error.message.includes('Failed to fetch') && pollCount < maxPollCount) {
+                setTimeout(pollForResults, pollInterval);
+            } else {
+                handlePollingError(requestId, error.message);
+            }
+        }
+    };
+    
+    // Start polling
+    setTimeout(pollForResults, 5000); // First check after 5 seconds
+}
+
+function handlePollingTimeout(requestId, originalSearchParams) {
+    console.log('Polling timeout reached for requestId:', requestId);
+    
+    resultsDiv.innerHTML = `
+        <div class="search-timeout-message">
+            <div class="warning-icon">
+                <i class="fas fa-clock"></i>
+            </div>
+            <h3>🕐 Search Taking Longer Than Expected</h3>
+            <p>Your AI-powered search is still processing in the background.</p>
+            <p>Complex searches can take up to 5 minutes to complete.</p>
+            <div class="timeout-actions">
+                <button onclick="location.reload()" class="retry-btn">
+                    <i class="fas fa-redo"></i> Refresh Page
+                </button>
+                <button onclick="checkResultsManually('${requestId}')" class="check-btn">
+                    <i class="fas fa-search"></i> Check Results Now
+                </button>
+            </div>
+            ${originalSearchParams.email ? `
+                <div class="email-notification">
+                    <i class="fas fa-envelope"></i>
+                    <p>Results will be sent to <strong>${originalSearchParams.email}</strong> once completed.</p>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    // Hide loading overlay
+    hideLoading();
+}
+
+function handlePollingError(requestId, errorMessage) {
+    console.error('Polling error for requestId:', requestId, 'Error:', errorMessage);
+    
+    resultsDiv.innerHTML = `
+        <div class="search-error-message">
+            <div class="error-icon">
+                <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <h3>⚠️ Search Processing Error</h3>
+            <p>There was an issue processing your search request.</p>
+            <p class="error-details">Error: ${errorMessage}</p>
+            <div class="error-actions">
+                <button onclick="location.reload()" class="retry-btn">
+                    <i class="fas fa-redo"></i> Try New Search
+                </button>
+            </div>
+        </div>
+    `;
+    
+    // Clear polling state
+    window.currentSearchId = null;
+    window.searchStartTime = null;
+    
+    // Hide loading overlay
+    hideLoading();
+}
+
+function showNoEventsFound(searchParams) {
+    resultsDiv.innerHTML = `
+        <div class="no-events-message">
+            <div class="info-icon">
+                <i class="fas fa-info-circle"></i>
+            </div>
+            <h3>🔍 No Events Found</h3>
+            <p>We couldn't find any events matching your criteria.</p>
+            <div class="search-suggestions">
+                <h4>Try adjusting your search:</h4>
+                <ul>
+                    <li>Expand your location radius</li>
+                    <li>Try different activity types</li>
+                    <li>Broaden your timeframe</li>
+                    <li>Use different keywords</li>
+                </ul>
+            </div>
+            <button onclick="document.getElementById('searchModal').style.display='block'" class="search-again-btn">
+                <i class="fas fa-search"></i> Search Again
+            </button>
+        </div>
+    `;
+    
+    // Hide loading overlay
+    hideLoading();
+}
+
+async function checkResultsManually(requestId) {
+    console.log('Manual results check for requestId:', requestId);
+    
+    try {
+        const getResultsUrl = `${AWS_API_BASE_URL}/get-results?requestId=${requestId}`;
+        const headers = { "Content-Type": "application/json" };
+        
+        const jwtToken = getToken();
+        if (jwtToken) {
+            headers["Authorization"] = `Bearer ${jwtToken}`;
+        }
+        
+        const response = await fetch(getResultsUrl, {
+            method: "GET",
+            headers: headers
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Failed to check results: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('Manual check result:', result);
+        
+        if (result.status === 'completed' && result.events?.length > 0) {
+            // Process and show results
+            const cleanedEvents = result.events.map(event => ({
+                ...event,
+                date: event.date ? event.date.replace(/^\*\* /, '') : event.date,
+                location: event.location ? event.location.replace(/^\*\* /, '') : event.location,
+                description: event.description || event.name
+            }));
+            
+            const searchResults = {
+                events: cleanedEvents,
+                searchParams: {}, // We don't have original params here
+                searchDate: new Date().toISOString(),
+                totalEvents: cleanedEvents.length,
+                requestId: requestId
+            };
+            
+            localStorage.setItem('latestSearchResults', JSON.stringify(searchResults));
+            showSearchSubmissionSuccess({}, cleanedEvents);
+            
+        } else if (result.status === 'processing') {
+            alert('Search is still processing. Please wait a bit longer.');
+        } else if (result.status === 'failed') {
+            alert('Search failed: ' + (result.error || 'Unknown error'));
+        } else {
+            alert('No results found yet.');
+        }
+        
+    } catch (error) {
+        console.error('Manual check error:', error);
+        alert('Failed to check results: ' + error.message);
+    }
 }
 
 // --- Initial Calls ---
