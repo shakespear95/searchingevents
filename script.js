@@ -998,14 +998,12 @@ eventForm.addEventListener("submit", async function (e) {
     `;
 
     const data = {
-        searchParams: {
-            location: document.getElementById("location").value,
-            activity_type: document.getElementById("activity_type").value,
-            timeframe: document.getElementById("timeframe").value,
-            radius: document.getElementById("radius").value,
-            keywords: document.getElementById("keywords").value,
-            email: document.getElementById("email").value
-        }
+        location: document.getElementById("location").value,
+        activity_type: document.getElementById("activity_type").value,
+        timeframe: document.getElementById("timeframe").value,
+        radius: document.getElementById("radius").value,
+        keywords: document.getElementById("keywords").value,
+        email: document.getElementById("email").value
     };
 
     // Close the modal after submission (good UX)
@@ -1030,6 +1028,9 @@ eventForm.addEventListener("submit", async function (e) {
         }
 
         // Submit search asynchronously - this should return immediately with requestId
+        console.log('Sending request to:', submitSearchUrl);
+        console.log('Request payload:', JSON.stringify(data, null, 2));
+        
         const response = await fetch(submitSearchUrl, {
             method: "POST",
             headers: headers,
@@ -1072,7 +1073,7 @@ eventForm.addEventListener("submit", async function (e) {
             `;
             
             // Start polling for results
-            startPollingForResults(result.requestId, data.searchParams);
+            startPollingForResults(result.requestId, data);
             
         } else if (response.ok && (result.events || result.body)) {
             // DIRECT RESPONSE: Old synchronous pattern with immediate results
@@ -1097,13 +1098,13 @@ eventForm.addEventListener("submit", async function (e) {
                     ...event,
                     date: event.date ? event.date.replace(/^\*\* /, '') : event.date,
                     location: event.location ? event.location.replace(/^\*\* /, '') : event.location,
-                    description: event.description || `${event.name} - A great event happening in ${parsedResult.searchLocation || data.searchParams.location || 'the area'}!`
+                    description: event.description || `${event.name} - A great event happening in ${parsedResult.searchLocation || data.location || 'the area'}!`
                 }));
                 
                 const searchResults = {
                     events: cleanedEvents,
                     searchLocation: parsedResult.searchLocation,
-                    searchParams: data.searchParams,
+                    searchParams: data,
                     searchDate: new Date().toISOString(),
                     totalEvents: parsedResult.totalEvents
                 };
@@ -1111,10 +1112,10 @@ eventForm.addEventListener("submit", async function (e) {
                 // Store in localStorage for the results page
                 localStorage.setItem('latestSearchResults', JSON.stringify(searchResults));
                 
-                showSearchSubmissionSuccess(data.searchParams, cleanedEvents);
+                showSearchSubmissionSuccess(data, cleanedEvents);
             } else {
                 console.log('No events received from direct response, showing no results message');
-                showNoEventsFound(data.searchParams);
+                showNoEventsFound(data);
             }
             
         } else {
