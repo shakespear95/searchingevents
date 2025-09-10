@@ -1777,3 +1777,140 @@ a:hover {
         margin: 20px 0;
     }
 }
+
+/* Email Verification Page Styles */
+.verification-section {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 100px 20px 20px;
+    background: linear-gradient(135deg, var(--gradient-dark-start), var(--gradient-dark-end));
+}
+
+.verification-container {
+    max-width: 600px;
+    width: 100%;
+    margin: 0 auto;
+}
+
+.verification-content {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 60px 40px;
+    text-align: center;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+.verification-loading {
+    color: var(--text-light);
+}
+
+.verification-loading .loading-spinner {
+    font-size: 3em;
+    color: var(--accent-blue);
+    margin-bottom: 30px;
+}
+
+.verification-loading h2 {
+    color: var(--text-light);
+    margin-bottom: 15px;
+}
+
+.verification-loading p {
+    color: #ccc;
+    font-size: 1.1em;
+}
+
+.verification-result {
+    color: var(--text-light);
+}
+
+.verification-result .result-icon {
+    font-size: 4em;
+    margin-bottom: 30px;
+}
+
+.verification-result.success .result-icon {
+    color: #28a745;
+}
+
+.verification-result.error .result-icon {
+    color: #dc3545;
+}
+
+.verification-result h2 {
+    color: var(--text-light);
+    margin-bottom: 20px;
+    font-size: 2em;
+}
+
+.verification-result p {
+    color: #ccc;
+    font-size: 1.2em;
+    margin-bottom: 30px;
+    line-height: 1.6;
+}
+
+.verification-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.verification-actions button {
+    min-width: 150px;
+}
+
+/* Mobile responsiveness for verification page */
+@media (max-width: 768px) {
+    .verification-content {
+        padding: 40px 30px;
+    }
+    
+    .verification-result .result-icon {
+        font-size: 3em;
+    }
+    
+    .verification-result h2 {
+        font-size: 1.6em;
+    }
+    
+    .verification-actions {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .verification-actions button {
+        width: 100%;
+        max-width: 250px;
+    }
+}
+
+@media (max-width: 480px) {
+    .verification-section {
+        padding: 80px 15px 15px;
+    }
+    
+    .verification-content {
+        padding: 30px 20px;
+    }
+    
+    .verification-result .result-icon {
+        font-size: 2.5em;
+        margin-bottom: 20px;
+    }
+    
+    .verification-result h2 {
+        font-size: 1.4em;
+        margin-bottom: 15px;
+    }
+    
+    .verification-result p {
+        font-size: 1em;
+        margin-bottom: 25px;
+    }
+}
