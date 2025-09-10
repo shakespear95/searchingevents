@@ -998,6 +998,7 @@ eventForm.addEventListener("submit", async function (e) {
     `;
 
     const data = {
+        requestId: `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         searchParams: {
             location: document.getElementById("location").value,
             activity_type: document.getElementById("activity_type").value,
@@ -1005,7 +1006,8 @@ eventForm.addEventListener("submit", async function (e) {
             radius: document.getElementById("radius").value,
             keywords: document.getElementById("keywords").value,
             email: document.getElementById("email").value
-        }
+        },
+        userId: currentUserId || 'anonymous'
     };
 
     // Close the modal after submission (good UX)
