@@ -8,8 +8,8 @@ const dynamoDB = DynamoDBDocumentClient.from(dynamoClient);
 
 // Environment variables for API keys (must be set in Lambda configuration)
 const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const SERPAPI_KEY = process.env.SERPAPI_KEY;
 
 const SEARCH_REQUESTS_TABLE = process.env.SEARCH_REQUESTS_TABLE || 'EventFinderSearchRequests';
@@ -44,42 +44,18 @@ exports.handler = async (event) => {
         const searchPrompt = buildSearchPrompt(searchParams);
         console.log('🔍 Search prompt built');
 
-        // Step 2: Try SerpAPI first, then Perplexity fallback
-        let eventsData;
-        try {
-            console.log('🔍 Searching Google Events with SerpAPI...');
-            await updateSearchStatus(requestId, 'processing', {
-                currentStep: 'Searching Google Events...'
-            });
+        // Step 2: Deep search with both SerpAPI and Perplexity (comprehensive data gathering)
+        console.log('🔍 Starting comprehensive event search with multiple sources...');
+        await updateSearchStatus(requestId, 'processing', {
+            currentStep: 'Searching multiple sources for comprehensive results...'
+        });
 
-            eventsData = await callSerpAPI(searchParams);
-            console.log('✅ SerpAPI Google Events data received');
-            
-        } catch (serpError) {
-            console.error('🔴 SerpAPI failed, trying Perplexity fallback:', serpError.message);
-            
-            try {
-                // Fallback to Perplexity
-                console.log('🌐 Calling Perplexity API for event data...');
-                const perplexityResponse = await callPerplexityAPI(searchPrompt);
-                
-                if (!perplexityResponse || !perplexityResponse.choices?.[0]?.message?.content) {
-                    throw new Error('No data received from Perplexity API');
-                }
-                
-                eventsData = perplexityResponse.choices[0].message.content;
-                console.log('✅ Perplexity API fallback successful');
-                
-            } catch (perplexityError) {
-                console.error('🔴 Both APIs failed, using fallback event data:', perplexityError.message);
-                eventsData = generateFallbackEvents(searchParams);
-            }
-        }
+        const eventsData = await gatherComprehensiveEventData(searchParams, searchPrompt);
 
-        // Step 3: Process and structure results with AI (Claude first, OpenAI fallback)
+        // Step 3: Process and structure results with AI (OpenAI first, Gemini fallback)
         console.log('🤖 Processing results with AI...');
         await updateSearchStatus(requestId, 'processing', {
-            currentStep: 'Processing and formatting event data...'
+            currentStep: 'Processing and formatting event data with OpenAI/Gemini...'
         });
 
         const structuredEvents = await processWithAI(eventsData, searchParams);
@@ -199,6 +175,52 @@ Focus on events that are officially announced and have verified details. Include
     
     console.log('🔍 Generated search prompt:', prompt);
     return prompt;
+}
+
+// Gather comprehensive event data from multiple sources (SerpAPI + Perplexity)
+async function gatherComprehensiveEventData(searchParams, searchPrompt) {
+    let combinedData = '';
+    
+    // Try to get data from both sources for comprehensive results
+    const searchResults = await Promise.allSettled([
+        callSerpAPI(searchParams),
+        callPerplexityAPI(searchPrompt)
+    ]);
+    
+    let serpApiData = null;
+    let perplexityData = null;
+    
+    // Process SerpAPI results
+    if (searchResults[0].status === 'fulfilled') {
+        serpApiData = searchResults[0].value;
+        console.log('✅ SerpAPI data collected successfully');
+        combinedData += `=== GOOGLE EVENTS DATA (via SerpAPI) ===\n${serpApiData}\n\n`;
+    } else {
+        console.error('🔴 SerpAPI failed:', searchResults[0].reason?.message);
+    }
+    
+    // Process Perplexity results
+    if (searchResults[1].status === 'fulfilled') {
+        const perplexityResponse = searchResults[1].value;
+        if (perplexityResponse?.choices?.[0]?.message?.content) {
+            perplexityData = perplexityResponse.choices[0].message.content;
+            console.log('✅ Perplexity data collected successfully');
+            combinedData += `=== WEB SEARCH DATA (via Perplexity) ===\n${perplexityData}\n\n`;
+        }
+    } else {
+        console.error('🔴 Perplexity failed:', searchResults[1].reason?.message);
+    }
+    
+    // If we have data from at least one source, use it
+    if (combinedData.trim()) {
+        console.log('✅ Comprehensive event data gathered from available sources');
+        combinedData += `=== SEARCH CRITERIA ===\nLocation: ${searchParams.location}\nCategory: ${searchParams.activity_type || 'Any'}\nTimeframe: ${searchParams.timeframe || 'Anytime'}\nKeywords: ${searchParams.keywords || 'None'}\n\n`;
+        return combinedData;
+    }
+    
+    // If both failed, use fallback data
+    console.log('⚠️ Both search sources failed, using generated fallback data');
+    return generateFallbackEvents(searchParams);
 }
 
 // Call SerpAPI for Google Events
@@ -402,117 +424,40 @@ async function callPerplexityAPI(prompt) {
     }
 }
 
-// Process results with AI (Claude first, OpenAI fallback)
+// Process results with AI (OpenAI → Gemini fallback chain)
 async function processWithAI(rawEventData, searchParams) {
-    // Try Claude first
-    try {
-        console.log('🔵 Trying Claude 3.5 Sonnet...');
-        return await processWithClaude(rawEventData, searchParams);
-    } catch (claudeError) {
-        console.error('🔴 Claude failed, trying OpenAI fallback:', claudeError.message);
-        
+    // Try all AI processors in order until one succeeds (Claude removed due to API issues)
+    const aiProcessors = [
+        { name: 'OpenAI GPT-4', icon: '🟢', func: processWithOpenAI },
+        { name: 'Google Gemini', icon: '🔴', func: processWithGemini }
+    ];
+    
+    for (const processor of aiProcessors) {
         try {
-            console.log('🟢 Trying OpenAI GPT-4...');
-            return await processWithOpenAI(rawEventData, searchParams);
-        } catch (openaiError) {
-            console.error('🔴 Both Claude and OpenAI failed:', openaiError.message);
-            
-            // Return basic fallback structure
-            return [{
-                name: "Events Found",
-                description: "Search completed but AI processing failed. Raw data was found but could not be formatted.",
-                date: new Date().toISOString().split('T')[0],
-                location: searchParams.location || "Various locations",
-                price: "Varies",
-                source: "",
-                category: searchParams.activity_type || "Event"
-            }];
+            console.log(`${processor.icon} Trying ${processor.name}...`);
+            const result = await processor.func(rawEventData, searchParams);
+            console.log(`✅ ${processor.name} successfully processed events`);
+            return result;
+        } catch (error) {
+            console.error(`🔴 ${processor.name} failed:`, error.message);
+            continue; // Try next processor
         }
     }
+    
+    // If all AI processors failed, return basic fallback structure
+    console.error('🔴 All AI processors failed, returning basic event structure');
+    return [{
+        name: "Events Found",
+        description: "Search completed but AI processing failed. Raw data was found but could not be formatted.",
+        date: new Date().toISOString().split('T')[0],
+        location: searchParams.location || "Various locations",
+        price: "Varies",
+        source: "",
+        category: searchParams.activity_type || "Event"
+    }];
 }
 
-// Process results with Claude 3.5 Sonnet
-async function processWithClaude(rawEventData, searchParams) {
-    try {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-                'x-api-key': ANTHROPIC_API_KEY,
-                'Content-Type': 'application/json',
-                'anthropic-version': '2023-06-01'
-            },
-            body: JSON.stringify({
-                model: 'claude-3-5-sonnet-20240620',
-                max_tokens: 4000,
-                messages: [
-                    {
-                        role: 'user',
-                        content: `Parse this event data into a clean JSON array. Extract only real events with complete information:
-
-${rawEventData}
-
-Return ONLY a JSON array of events with this exact structure:
-[
-  {
-    "name": "Event Name",
-    "description": "Brief description",
-    "date": "YYYY-MM-DD or descriptive date",
-    "time": "Time if available",
-    "location": "Venue name and address",
-    "price": "Free, price, or price range",
-    "source": "Website URL if available",
-    "category": "${searchParams.activity_type || 'Event'}"
-  }
-]
-
-Requirements:
-- Only include events with names and locations
-- Format dates consistently
-- Include pricing information if available
-- Add website URLs when found
-- Limit to 10 best events
-- Return valid JSON only, no additional text`
-                    }
-                ]
-            })
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Claude API response error:', response.status, response.statusText, errorText);
-            throw new Error(`Claude API error: ${response.status} ${response.statusText}. Details: ${errorText}`);
-        }
-
-        const data = await response.json();
-        const content = data.content?.[0]?.text;
-
-        if (!content) {
-            throw new Error('No content received from Claude API');
-        }
-
-        // Parse JSON response
-        try {
-            const events = JSON.parse(content);
-            return Array.isArray(events) ? events : [];
-        } catch (parseError) {
-            console.error('Failed to parse Claude response as JSON:', parseError);
-            // Return a fallback event structure
-            return [{
-                name: "Events Found",
-                description: "Search completed but formatting failed. Please try again.",
-                date: new Date().toISOString().split('T')[0],
-                location: searchParams.location || "Various locations",
-                price: "Varies",
-                source: "",
-                category: searchParams.activity_type || "Event"
-            }];
-        }
-
-    } catch (error) {
-        console.error('Claude API call failed:', error);
-        throw new Error(`Failed to process events with Claude: ${error.message}`);
-    }
-}
+// Claude removed due to API key issues - using OpenAI and Gemini only
 
 // Process results with OpenAI GPT-4 (fallback)
 async function processWithOpenAI(rawEventData, searchParams) {
@@ -577,13 +522,24 @@ Requirements:
             throw new Error('No content received from OpenAI API');
         }
 
-        // Parse JSON response
+        // Parse JSON response - remove markdown formatting if present
         try {
-            const events = JSON.parse(content);
+            // Clean the content by removing markdown code blocks
+            let cleanContent = content.trim();
+            
+            // Remove ```json and ``` markers if present
+            if (cleanContent.startsWith('```json')) {
+                cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+            } else if (cleanContent.startsWith('```')) {
+                cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+            }
+            
+            const events = JSON.parse(cleanContent);
             console.log('✅ OpenAI successfully processed events');
             return Array.isArray(events) ? events : [];
         } catch (parseError) {
             console.error('Failed to parse OpenAI response as JSON:', parseError);
+            console.error('Raw OpenAI content:', content);
             // Return a fallback event structure
             return [{
                 name: "Events Found via OpenAI",
@@ -599,6 +555,125 @@ Requirements:
     } catch (error) {
         console.error('OpenAI API call failed:', error);
         throw new Error(`Failed to process events with OpenAI: ${error.message}`);
+    }
+}
+
+// Process results with Google Gemini (fallback)
+async function processWithGemini(rawEventData, searchParams) {
+    try {
+        const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent', {
+            method: 'POST',
+            headers: {
+                'x-goog-api-key': GEMINI_API_KEY,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                contents: [
+                    {
+                        parts: [
+                            {
+                                text: `Parse this event data into a clean JSON array. Extract only real events with complete information:
+
+${rawEventData}
+
+Return ONLY a JSON array of events with this exact structure:
+[
+  {
+    "name": "Event Name",
+    "description": "Brief description",
+    "date": "YYYY-MM-DD or descriptive date",
+    "time": "Time if available",
+    "location": "Venue name and address",
+    "price": "Free, price, or price range",
+    "source": "Website URL if available",
+    "category": "${searchParams.activity_type || 'Event'}"
+  }
+]
+
+Requirements:
+- Only include events with names and locations
+- Format dates consistently
+- Include pricing information if available
+- Add website URLs when found
+- Limit to 10 best events
+- Return valid JSON only, no additional text`
+                            }
+                        ]
+                    }
+                ],
+                generationConfig: {
+                    temperature: 0.1,
+                    topK: 1,
+                    topP: 0.8,
+                    maxOutputTokens: 4000
+                },
+                safetySettings: [
+                    {
+                        category: "HARM_CATEGORY_HARASSMENT",
+                        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+                    },
+                    {
+                        category: "HARM_CATEGORY_HATE_SPEECH",
+                        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+                    },
+                    {
+                        category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+                    },
+                    {
+                        category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+                        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+                    }
+                ]
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Gemini API response error:', response.status, response.statusText, errorText);
+            throw new Error(`Gemini API error: ${response.status} ${response.statusText}. Details: ${errorText}`);
+        }
+
+        const data = await response.json();
+        const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (!content) {
+            throw new Error('No content received from Gemini API');
+        }
+
+        // Parse JSON response - remove markdown formatting if present
+        try {
+            // Clean the content by removing markdown code blocks
+            let cleanContent = content.trim();
+            
+            // Remove ```json and ``` markers if present
+            if (cleanContent.startsWith('```json')) {
+                cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+            } else if (cleanContent.startsWith('```')) {
+                cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+            }
+            
+            const events = JSON.parse(cleanContent);
+            console.log('✅ Gemini successfully processed events');
+            return Array.isArray(events) ? events : [];
+        } catch (parseError) {
+            console.error('Failed to parse Gemini response as JSON:', parseError);
+            console.error('Raw Gemini content:', content);
+            // Return a fallback event structure
+            return [{
+                name: "Events Found via Gemini",
+                description: "Search completed with Gemini but JSON parsing failed. Please try again.",
+                date: new Date().toISOString().split('T')[0],
+                location: searchParams.location || "Various locations",
+                price: "Varies",
+                source: "",
+                category: searchParams.activity_type || "Event"
+            }];
+        }
+
+    } catch (error) {
+        console.error('Gemini API call failed:', error);
+        throw new Error(`Failed to process events with Gemini: ${error.message}`);
     }
 }
 
