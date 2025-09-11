@@ -2506,6 +2506,11 @@ function addEventsToMap(events) {
     console.log('✅ Added', eventMarkers.length, 'event markers to map');
 }
 
+// Helper function to get current user ID
+function getCurrentUserId() {
+    return currentUserId;
+}
+
 // Generate events near user location
 async function generateNearbyEvents() {
     if (!userLocation) {
@@ -2607,59 +2612,106 @@ async function getReverseGeocodedLocation(lat, lng) {
     }
 }
 
-// Fetch real nearby events from SerpAPI
+// Fetch real nearby events from backend API (SerpAPI integration)
 async function fetchNearbyEventsFromSerpAPI(locationName) {
     try {
-        const serpApiKey = '707607e4b60aeb18589879480d883fdf1b9f69443b97112c0ab6e4dec6b6c744';
+        console.log('🔍 Fetching nearby events via backend API for:', locationName);
         
-        // Build search query
-        const query = `events in ${locationName}`;
-        
-        const serpParams = new URLSearchParams({
-            engine: 'google_events',
-            q: query,
-            location: locationName,
-            api_key: serpApiKey,
-            num: 10
+        // Call our backend API which has SerpAPI integration
+        const response = await fetch(`${API_BASE_URL}/search-events`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(isUserLoggedIn() ? { 'Authorization': `Bearer ${getToken()}` } : {})
+            },
+            body: JSON.stringify({
+                requestId: `map-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                searchParams: {
+                    location: locationName,
+                    activity_type: 'Any',
+                    timeframe: 'This Week',
+                    radius: '20',
+                    keywords: '',
+                    email: ''
+                },
+                userId: getCurrentUserId() || 'anonymous'
+            })
         });
-        
-        console.log('🔍 Fetching events with SerpAPI:', query);
-        
-        const response = await fetch(`https://serpapi.com/search?${serpParams.toString()}`);
-        
+
         if (!response.ok) {
-            throw new Error(`SerpAPI error: ${response.status} ${response.statusText}`);
+            throw new Error(`API request failed: ${response.status}`);
         }
-        
+
         const data = await response.json();
         
-        if (!data.events_results || data.events_results.length === 0) {
-            console.log('⚠️ No events found via SerpAPI');
+        // Handle async response - for map, we'll use a shorter polling cycle
+        if (data.success && data.requestId) {
+            console.log('📡 Backend search submitted, waiting for quick results...');
+            return await pollForMapResults(data.requestId);
+        } else {
+            console.log('⚠️ Backend API did not return expected format');
             return [];
         }
         
-        console.log(`✅ SerpAPI found ${data.events_results.length} events`);
-        
-        // Convert SerpAPI events to our format
-        return data.events_results.slice(0, 6).map(event => ({
-            name: event.title || 'Local Event',
-            category: categorizeEvent(event.title),
-            date: event.date?.start_date || new Date().toISOString().split('T')[0],
-            time: event.date?.when || 'TBD',
-            location: event.venue?.name || 'Local Venue',
-            address: event.address ? event.address.join(', ') : locationName,
-            price: event.ticket_info?.[0]?.price || 'Check website',
-            description: event.description || 'Local event in your area',
-            // Generate coordinates around user location since Google Events don't always have exact coords
-            lat: userLocation.lat + (Math.random() - 0.5) * 0.04, 
-            lng: userLocation.lng + (Math.random() - 0.5) * 0.04,
-            source: event.ticket_info?.[0]?.link || event.link
-        }));
-        
     } catch (error) {
-        console.error('❌ SerpAPI request failed:', error);
+        console.error('❌ Backend API request failed:', error);
         return [];
     }
+}
+
+// Poll for map search results (shorter polling for better UX)
+async function pollForMapResults(requestId, maxAttempts = 4) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            console.log(`🔄 Polling attempt ${attempt}/${maxAttempts} for map results...`);
+            
+            const response = await fetch(`${API_BASE_URL}/search-events?requestId=${requestId}`, {
+                headers: {
+                    ...(isUserLoggedIn() ? { 'Authorization': `Bearer ${getToken()}` } : {})
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Poll request failed: ${response.status}`);
+            }
+
+            const data = await response.json();
+            
+            if (data.status === 'completed' && data.results) {
+                console.log('✅ Map results received from backend');
+                // Convert backend results to map format
+                return data.results.slice(0, 6).map(event => ({
+                    name: event.name || 'Local Event',
+                    category: event.category || categorizeEvent(event.name),
+                    date: event.date || new Date().toISOString().split('T')[0],
+                    time: event.time || 'TBD',
+                    location: event.location || 'Local Venue',
+                    address: event.location || locationName,
+                    price: event.price || 'Check website',
+                    description: event.description || 'Local event in your area',
+                    // Generate coordinates around user location
+                    lat: userLocation.lat + (Math.random() - 0.5) * 0.04, 
+                    lng: userLocation.lng + (Math.random() - 0.5) * 0.04,
+                    source: event.source
+                }));
+            } else if (data.status === 'error') {
+                console.error('🔴 Backend processing error:', data.error);
+                return [];
+            }
+            
+            // Still processing, wait and try again (shorter wait for map)
+            if (attempt < maxAttempts) {
+                console.log('⏳ Search still processing, waiting 3 seconds...');
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+            
+        } catch (error) {
+            console.error(`❌ Poll attempt ${attempt} failed:`, error);
+        }
+    }
+    
+    console.log('⚠️ Max polling attempts reached for map, using fallback');
+    return [];
 }
 
 // Categorize event based on title
