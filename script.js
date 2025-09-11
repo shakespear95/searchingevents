@@ -759,36 +759,8 @@ const authUI = new AuthUI();
 async function handleAuthResponse(response) {
     const data = await response.json();
     if (response.ok) {
-        // Handle successful registration requiring verification
-        if (data.requiresVerification) {
-            authMessage.innerHTML = `
-                <div style="text-align: left;">
-                    <i class="fas fa-check-circle" style="color: green;"></i> 
-                    <strong>Account created successfully!</strong><br>
-                    <small>📧 Please check your email and click the verification link to complete registration.</small><br>
-                    <small>Email: ${data.email}</small>
-                </div>
-            `;
-            authMessage.style.color = 'green';
-            
-            // Add resend verification button
-            setTimeout(() => {
-                authMessage.innerHTML += `
-                    <div style="margin-top: 15px;">
-                        <button id="resendVerificationBtn" style="background: linear-gradient(135deg, #6c757d, #5a6268); color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 12px;">
-                            <i class="fas fa-paper-plane"></i> Resend Verification Email
-                        </button>
-                    </div>
-                `;
-                
-                // Add event listener for resend button
-                const resendBtn = document.getElementById('resendVerificationBtn');
-                if (resendBtn) {
-                    resendBtn.addEventListener('click', () => resendVerificationEmail(data.email));
-                }
-            }, 1000);
-            return;
-        }
+        // DISABLED: Email verification - users can signup immediately
+        // if (data.requiresVerification) { ... }
         
         // Handle successful login with token
         if (data.token) {
@@ -816,32 +788,8 @@ async function handleAuthResponse(response) {
             }, 1000);
         }
     } else {
-        // Handle login requiring verification
-        if (data.requiresVerification) {
-            authMessage.innerHTML = `
-                <div style="text-align: left;">
-                    <i class="fas fa-exclamation-triangle" style="color: orange;"></i> 
-                    <strong>Email verification required</strong><br>
-                    <small>📧 Please check your email and click the verification link before logging in.</small><br>
-                    <small>Email: ${data.email}</small>
-                    <div style="margin-top: 10px;">
-                        <button id="resendVerificationBtn" style="background: linear-gradient(135deg, #6c757d, #5a6268); color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 12px;">
-                            <i class="fas fa-paper-plane"></i> Resend Verification Email
-                        </button>
-                    </div>
-                </div>
-            `;
-            authMessage.style.color = 'orange';
-            
-            // Add event listener for resend button
-            setTimeout(() => {
-                const resendBtn = document.getElementById('resendVerificationBtn');
-                if (resendBtn) {
-                    resendBtn.addEventListener('click', () => resendVerificationEmail(data.email));
-                }
-            }, 100);
-            return;
-        }
+        // DISABLED: Login verification requirement - users can login immediately
+        // if (data.requiresVerification) { ... }
         
         authMessage.textContent = data.message || 'Authentication failed.';
         authMessage.style.color = 'red';
@@ -1179,26 +1127,12 @@ signupForm.addEventListener('submit', async (e) => {
         const data = await response.json();
         
         if (response.ok) {
-            if (data.requiresVerification) {
-                // Account created but needs email verification
-                authMessage.style.color = 'green';
-                authMessage.innerHTML = `
-                    <div style="text-align: left;">
-                        <i class="fas fa-check-circle" style="color: green;"></i> 
-                        <strong>Account created successfully!</strong><br>
-                        <small>📧 Please check your email and click the verification link to complete registration.</small><br>
-                        <small>💡 Check your spam folder if you don't see the email within a few minutes.</small>
-                    </div>
-                `;
-                
-                // Switch to login form after delay
-                setTimeout(() => {
-                    showLogin();
-                    authMessage.textContent = 'Please verify your email, then login.';
-                    authMessage.style.color = 'blue';
-                }, 3000);
-            } else if (data.token) {
-                // Direct login (no verification required)
+            // Always treat successful registration as immediate login (no verification)
+            authMessage.style.color = 'green';
+            authMessage.textContent = 'Account created successfully! Logging you in...';
+            
+            if (data.token) {
+                // User gets token directly - log them in
                 const rememberMe = false; // Default for new signups
                 authManager.setToken(data.token, rememberMe);
                 if (data.refreshToken) {
@@ -1208,13 +1142,21 @@ signupForm.addEventListener('submit', async (e) => {
                 currentUserId = authManager.getUserIdFromToken(data.token);
                 authManager.updateAuthUI();
                 
-                authMessage.style.color = 'green';
                 authMessage.textContent = 'Account created and logged in successfully!';
                 
                 setTimeout(() => {
                     loginSignupModal.style.display = 'none';
                     authMessage.textContent = '';
-                }, 1500);
+                }, 500);
+            } else {
+                // No token provided - show success and redirect to login
+                authMessage.textContent = 'Account created successfully! Please login.';
+                
+                setTimeout(() => {
+                    showLogin();
+                    authMessage.textContent = 'Account created - please login with your credentials.';
+                    authMessage.style.color = 'green';
+                }, 800);
             }
         } else {
             // Handle registration errors
