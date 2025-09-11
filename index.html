@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
 <body>
 
@@ -25,7 +26,7 @@
         </div>
         <nav class="navbar-right">
             <ul>
-                <li><a href="#">Browse events</a></li>
+                <li><a href="#" id="browseEventsBtn">Browse events</a></li>
                 <li><a href="#">Get help</a></li>
                 <li>
                     <button id="openSearchBtn" class="search-btn">
@@ -49,7 +50,7 @@
 
     <div class="mobile-menu" id="mobileMenu">
         <ul>
-            <li><a href="#">Browse events</a></li>
+            <li><a href="#" class="browseEventsBtn">Browse events</a></li>
             <li><a href="#">Get help</a></li>
             <li><button id="loginBtnMobile" class="login-btn-mobile"><i class="fas fa-sign-in-alt"></i> Login</button></li>
             <li><button id="signupBtnMobile" class="signup-btn-mobile"><i class="fas fa-user-plus"></i> Sign Up</button></li>
@@ -227,6 +228,80 @@
             </div>
         </div>
     </div>
+
+    <!-- Events Map Modal -->
+    <div id="eventsMapModal" class="modal">
+        <div class="modal-content map-modal-content">
+            <button class="modal-close-btn" id="closeMapModalBtn"><i class="fas fa-times"></i></button>
+            <div class="map-header">
+                <h2><i class="fas fa-map-marker-alt"></i> Events Near You</h2>
+                <div class="location-info">
+                    <span id="currentLocation">Detecting your location...</span>
+                    <button id="refreshLocationBtn" class="refresh-btn" title="Refresh location">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Map Legend -->
+            <div class="map-legend">
+                <div class="legend-item">
+                    <div class="legend-color music"></div>
+                    <span>Music & Concerts</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color food"></div>
+                    <span>Food & Dining</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color sports"></div>
+                    <span>Sports & Fitness</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color arts"></div>
+                    <span>Arts & Culture</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color business"></div>
+                    <span>Business & Tech</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color other"></div>
+                    <span>Other Events</span>
+                </div>
+            </div>
+
+            <!-- Map Container -->
+            <div id="eventsMap" class="events-map"></div>
+
+            <!-- Map Controls -->
+            <div class="map-controls">
+                <button id="recenterMapBtn" class="map-control-btn">
+                    <i class="fas fa-crosshairs"></i> Recenter
+                </button>
+                <button id="fullscreenMapBtn" class="map-control-btn">
+                    <i class="fas fa-expand"></i> Fullscreen
+                </button>
+                <select id="mapTypeSelect" class="map-select">
+                    <option value="street">Street View</option>
+                    <option value="satellite">Satellite</option>
+                    <option value="hybrid">Hybrid</option>
+                </select>
+            </div>
+
+            <!-- Location Permission Banner -->
+            <div id="locationPermissionBanner" class="permission-banner" style="display: none;">
+                <div class="banner-content">
+                    <i class="fas fa-location-arrow"></i>
+                    <div class="banner-text">
+                        <strong>Location Access Needed</strong>
+                        <p>To show events near you, we need access to your location.</p>
+                    </div>
+                    <button id="enableLocationBtn" class="enable-location-btn">Enable Location</button>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <!-- Search History Section (only visible when logged in) -->
     <section class="search-history-section" id="searchHistorySection" style="display: none;">
@@ -279,6 +354,7 @@
         </div>
     </footer>
 
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

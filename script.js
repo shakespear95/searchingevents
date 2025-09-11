@@ -2172,3 +2172,596 @@ if (isUserLoggedIn()) {
         displayLocalSearchHistory();
     }
 }
+
+// ================================
+// EVENTS MAP FUNCTIONALITY
+// ================================
+
+let eventsMap = null;
+let userLocation = null;
+let eventMarkers = [];
+
+// Event categories and their colors
+const eventCategories = {
+    'Music': { color: '#e74c3c', class: 'music' },
+    'Food': { color: '#f39c12', class: 'food' },
+    'Sports': { color: '#2ecc71', class: 'sports' },
+    'Arts': { color: '#9b59b6', class: 'arts' },
+    'Business': { color: '#3498db', class: 'business' },
+    'Other': { color: '#95a5a6', class: 'other' }
+};
+
+// Sample events data (you can replace this with API data)
+const sampleEvents = [
+    {
+        name: "Jazz Night at Blue Note",
+        category: "Music",
+        date: "2025-09-15",
+        time: "8:00 PM",
+        location: "Blue Note Jazz Club",
+        address: "131 W 3rd St, New York, NY 10012",
+        price: "$25",
+        description: "An evening of smooth jazz with local artists",
+        lat: 40.7308,
+        lng: -74.0014
+    },
+    {
+        name: "Food Truck Festival",
+        category: "Food",
+        date: "2025-09-14",
+        time: "11:00 AM - 8:00 PM",
+        location: "Central Park",
+        address: "Central Park, New York, NY",
+        price: "Free entry",
+        description: "Over 50 food trucks with international cuisine",
+        lat: 40.7829,
+        lng: -73.9654
+    },
+    {
+        name: "Marathon Training Run",
+        category: "Sports",
+        date: "2025-09-13",
+        time: "6:00 AM",
+        location: "Riverside Park",
+        address: "Riverside Park, New York, NY",
+        price: "Free",
+        description: "Weekly training session for marathon runners",
+        lat: 40.7957,
+        lng: -73.9389
+    },
+    {
+        name: "Modern Art Exhibition",
+        category: "Arts",
+        date: "2025-09-12",
+        time: "10:00 AM - 6:00 PM",
+        location: "MoMA",
+        address: "11 W 53rd St, New York, NY 10019",
+        price: "$25",
+        description: "Contemporary works from emerging artists",
+        lat: 40.7614,
+        lng: -73.9776
+    },
+    {
+        name: "Tech Startup Meetup",
+        category: "Business",
+        date: "2025-09-16",
+        time: "6:30 PM",
+        location: "WeWork",
+        address: "222 Broadway, New York, NY 10038",
+        price: "Free",
+        description: "Networking event for tech entrepreneurs",
+        lat: 40.7128,
+        lng: -74.0060
+    }
+];
+
+// Browse Events button event listeners
+document.getElementById('browseEventsBtn').addEventListener('click', function(e) {
+    e.preventDefault();
+    openEventsMap();
+});
+
+// Also handle mobile menu browse events button
+document.querySelector('.browseEventsBtn')?.addEventListener('click', function(e) {
+    e.preventDefault();
+    closeMobileMenu(); // Close mobile menu first
+    openEventsMap();
+});
+
+// Modal close functionality
+document.getElementById('closeMapModalBtn').addEventListener('click', closeEventsMap);
+
+// Location refresh button
+document.getElementById('refreshLocationBtn').addEventListener('click', getUserLocation);
+
+// Enable location button
+document.getElementById('enableLocationBtn').addEventListener('click', function() {
+    document.getElementById('locationPermissionBanner').style.display = 'none';
+    getUserLocation();
+});
+
+// Map control buttons
+document.getElementById('recenterMapBtn').addEventListener('click', recenterMap);
+document.getElementById('fullscreenMapBtn').addEventListener('click', toggleFullscreen);
+
+// Open Events Map Modal
+function openEventsMap() {
+    console.log('🗺️ Opening events map...');
+    
+    // Show the modal
+    document.getElementById('eventsMapModal').style.display = 'block';
+    document.body.style.overflow = 'hidden';
+    
+    // Initialize map if not already done
+    if (!eventsMap) {
+        initializeEventsMap();
+    }
+    
+    // Get user location
+    getUserLocation();
+}
+
+// Close Events Map Modal
+function closeEventsMap() {
+    document.getElementById('eventsMapModal').style.display = 'none';
+    document.body.style.overflow = 'auto';
+}
+
+// Initialize the Leaflet map
+function initializeEventsMap() {
+    console.log('🗺️ Initializing events map...');
+    
+    try {
+        // Default location (NYC) if geolocation fails
+        const defaultLat = 40.7128;
+        const defaultLng = -74.0060;
+        
+        // Create the map
+        eventsMap = L.map('eventsMap').setView([defaultLat, defaultLng], 12);
+        
+        // Add tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(eventsMap);
+        
+        // Add sample events to map
+        addEventsToMap(sampleEvents);
+        
+        console.log('✅ Events map initialized successfully');
+        
+        // Invalidate size to fix display issues
+        setTimeout(() => {
+            if (eventsMap) {
+                eventsMap.invalidateSize();
+            }
+        }, 100);
+        
+    } catch (error) {
+        console.error('❌ Error initializing map:', error);
+        showMapError('Failed to load map. Please try again later.');
+    }
+}
+
+// Get user's current location
+function getUserLocation() {
+    console.log('📍 Requesting user location...');
+    
+    if (!navigator.geolocation) {
+        console.warn('❌ Geolocation is not supported');
+        showLocationPermissionBanner();
+        return;
+    }
+    
+    // Show location loading state
+    document.getElementById('currentLocation').textContent = 'Getting your location...';
+    
+    navigator.geolocation.getCurrentPosition(
+        // Success callback
+        function(position) {
+            console.log('✅ Location obtained:', position.coords);
+            
+            userLocation = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude
+            };
+            
+            // Update location display
+            updateLocationDisplay();
+            
+            // Center map on user location
+            if (eventsMap) {
+                eventsMap.setView([userLocation.lat, userLocation.lng], 13);
+                
+                // Add user location marker
+                addUserLocationMarker();
+            }
+            
+            // Generate nearby events based on user location
+            generateNearbyEvents();
+        },
+        // Error callback
+        function(error) {
+            console.error('❌ Geolocation error:', error);
+            handleLocationError(error);
+        },
+        // Options
+        {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 300000 // 5 minutes
+        }
+    );
+}
+
+// Handle location errors
+function handleLocationError(error) {
+    let message = 'Unable to get your location. ';
+    
+    switch(error.code) {
+        case error.PERMISSION_DENIED:
+            message += 'Location access denied.';
+            showLocationPermissionBanner();
+            break;
+        case error.POSITION_UNAVAILABLE:
+            message += 'Location information unavailable.';
+            break;
+        case error.TIMEOUT:
+            message += 'Location request timed out.';
+            break;
+        default:
+            message += 'Unknown location error.';
+            break;
+    }
+    
+    document.getElementById('currentLocation').textContent = message;
+    console.warn('⚠️ ' + message);
+}
+
+// Show location permission banner
+function showLocationPermissionBanner() {
+    document.getElementById('locationPermissionBanner').style.display = 'block';
+}
+
+// Update location display
+function updateLocationDisplay() {
+    if (userLocation) {
+        // You could use reverse geocoding here to get the address
+        document.getElementById('currentLocation').textContent = 
+            `📍 ${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}`;
+    }
+}
+
+// Add user location marker to map
+function addUserLocationMarker() {
+    if (!eventsMap || !userLocation) return;
+    
+    // Create custom user location icon
+    const userIcon = L.divIcon({
+        className: 'user-location-marker',
+        html: '<i class="fas fa-user-circle" style="color: #007bff; font-size: 20px;"></i>',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+    });
+    
+    // Add marker
+    L.marker([userLocation.lat, userLocation.lng], {
+        icon: userIcon
+    }).addTo(eventsMap)
+      .bindPopup('<strong>📍 You are here</strong>')
+      .openPopup();
+}
+
+// Add events to the map
+function addEventsToMap(events) {
+    console.log('📌 Adding', events.length, 'events to map...');
+    
+    // Clear existing markers
+    eventMarkers.forEach(marker => {
+        if (eventsMap) {
+            eventsMap.removeLayer(marker);
+        }
+    });
+    eventMarkers = [];
+    
+    // Add each event as a marker
+    events.forEach(event => {
+        const category = eventCategories[event.category] || eventCategories['Other'];
+        
+        // Create custom marker icon
+        const markerIcon = L.divIcon({
+            className: `event-marker ${category.class}`,
+            html: `<div style="
+                background: ${category.color}; 
+                width: 16px; 
+                height: 16px; 
+                border-radius: 50%; 
+                border: 2px solid white;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            "></div>`,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+        });
+        
+        // Create popup content
+        const popupContent = `
+            <div class="event-popup">
+                <h4>${event.name}</h4>
+                <div class="event-date">${event.date} at ${event.time}</div>
+                <div class="event-location">${event.location}</div>
+                <div class="event-price">${event.price}</div>
+                <div class="event-category">${event.category}</div>
+                <p style="margin: 8px 0 0 0; font-size: 0.85rem;">${event.description}</p>
+            </div>
+        `;
+        
+        // Add marker to map
+        const marker = L.marker([event.lat, event.lng], {
+            icon: markerIcon
+        }).addTo(eventsMap)
+          .bindPopup(popupContent);
+        
+        eventMarkers.push(marker);
+    });
+    
+    console.log('✅ Added', eventMarkers.length, 'event markers to map');
+}
+
+// Generate events near user location
+async function generateNearbyEvents() {
+    if (!userLocation) {
+        console.log('⚠️ No user location available for nearby events');
+        return;
+    }
+    
+    console.log('🎯 Fetching real events near user location...');
+    
+    try {
+        // Get city name from coordinates using reverse geocoding
+        const locationName = await getReverseGeocodedLocation(userLocation.lat, userLocation.lng);
+        console.log('📍 Location detected:', locationName);
+        
+        // Try to fetch real events using SerpAPI
+        const realEvents = await fetchNearbyEventsFromSerpAPI(locationName);
+        
+        if (realEvents && realEvents.length > 0) {
+            console.log(`✅ Found ${realEvents.length} real nearby events`);
+            // Combine with sample events
+            const allEvents = [...sampleEvents, ...realEvents];
+            addEventsToMap(allEvents);
+        } else {
+            // Fallback to generated events
+            console.log('⚠️ No real events found, using generated fallback events');
+            generateFallbackNearbyEvents();
+        }
+        
+    } catch (error) {
+        console.error('❌ Error fetching nearby events:', error);
+        // Fallback to generated events
+        generateFallbackNearbyEvents();
+    }
+}
+
+// Fallback function for generated events
+function generateFallbackNearbyEvents() {
+    if (!userLocation) return;
+    
+    // Create events around user's location (within ~5km radius)
+    const nearbyEvents = [
+        {
+            name: "Local Coffee Meetup",
+            category: "Business",
+            date: new Date(Date.now() + 24*60*60*1000).toISOString().split('T')[0], // Tomorrow
+            time: "9:00 AM",
+            location: "Nearby Café",
+            address: "Local area",
+            price: "Free",
+            description: "Morning networking over coffee",
+            lat: userLocation.lat + (Math.random() - 0.5) * 0.02, // Random within ~1km
+            lng: userLocation.lng + (Math.random() - 0.5) * 0.02
+        },
+        {
+            name: "Community Yoga",
+            category: "Sports",
+            date: new Date(Date.now() + 2*24*60*60*1000).toISOString().split('T')[0], // Day after tomorrow
+            time: "7:00 AM",
+            location: "Local Park",
+            address: "Near you",
+            price: "Free",
+            description: "Morning yoga session in the park",
+            lat: userLocation.lat + (Math.random() - 0.5) * 0.03,
+            lng: userLocation.lng + (Math.random() - 0.5) * 0.03
+        },
+        {
+            name: "Local Live Music",
+            category: "Music",
+            date: new Date(Date.now() + 3*24*60*60*1000).toISOString().split('T')[0],
+            time: "7:30 PM",
+            location: "Neighborhood Bar",
+            address: "Local venue",
+            price: "$10",
+            description: "Live acoustic music by local artists",
+            lat: userLocation.lat + (Math.random() - 0.5) * 0.025,
+            lng: userLocation.lng + (Math.random() - 0.5) * 0.025
+        }
+    ];
+    
+    // Combine with existing sample events
+    const allEvents = [...sampleEvents, ...nearbyEvents];
+    
+    // Re-add all events to map
+    addEventsToMap(allEvents);
+}
+
+// Get location name from coordinates
+async function getReverseGeocodedLocation(lat, lng) {
+    try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`);
+        const data = await response.json();
+        
+        // Extract city/town name
+        const address = data.address;
+        return address.city || address.town || address.village || address.county || address.state || 'Unknown Location';
+    } catch (error) {
+        console.error('Reverse geocoding failed:', error);
+        return 'Your Location';
+    }
+}
+
+// Fetch real nearby events from SerpAPI
+async function fetchNearbyEventsFromSerpAPI(locationName) {
+    try {
+        const serpApiKey = '707607e4b60aeb18589879480d883fdf1b9f69443b97112c0ab6e4dec6b6c744';
+        
+        // Build search query
+        const query = `events in ${locationName}`;
+        
+        const serpParams = new URLSearchParams({
+            engine: 'google_events',
+            q: query,
+            location: locationName,
+            api_key: serpApiKey,
+            num: 10
+        });
+        
+        console.log('🔍 Fetching events with SerpAPI:', query);
+        
+        const response = await fetch(`https://serpapi.com/search?${serpParams.toString()}`);
+        
+        if (!response.ok) {
+            throw new Error(`SerpAPI error: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data.events_results || data.events_results.length === 0) {
+            console.log('⚠️ No events found via SerpAPI');
+            return [];
+        }
+        
+        console.log(`✅ SerpAPI found ${data.events_results.length} events`);
+        
+        // Convert SerpAPI events to our format
+        return data.events_results.slice(0, 6).map(event => ({
+            name: event.title || 'Local Event',
+            category: categorizeEvent(event.title),
+            date: event.date?.start_date || new Date().toISOString().split('T')[0],
+            time: event.date?.when || 'TBD',
+            location: event.venue?.name || 'Local Venue',
+            address: event.address ? event.address.join(', ') : locationName,
+            price: event.ticket_info?.[0]?.price || 'Check website',
+            description: event.description || 'Local event in your area',
+            // Generate coordinates around user location since Google Events don't always have exact coords
+            lat: userLocation.lat + (Math.random() - 0.5) * 0.04, 
+            lng: userLocation.lng + (Math.random() - 0.5) * 0.04,
+            source: event.ticket_info?.[0]?.link || event.link
+        }));
+        
+    } catch (error) {
+        console.error('❌ SerpAPI request failed:', error);
+        return [];
+    }
+}
+
+// Categorize event based on title
+function categorizeEvent(title) {
+    if (!title) return 'Other';
+    
+    const titleLower = title.toLowerCase();
+    
+    if (titleLower.includes('music') || titleLower.includes('concert') || titleLower.includes('band') || 
+        titleLower.includes('jazz') || titleLower.includes('rock') || titleLower.includes('festival')) {
+        return 'Music';
+    }
+    
+    if (titleLower.includes('food') || titleLower.includes('restaurant') || titleLower.includes('dining') || 
+        titleLower.includes('culinary') || titleLower.includes('cooking') || titleLower.includes('wine')) {
+        return 'Food';
+    }
+    
+    if (titleLower.includes('sport') || titleLower.includes('fitness') || titleLower.includes('run') || 
+        titleLower.includes('yoga') || titleLower.includes('gym') || titleLower.includes('marathon')) {
+        return 'Sports';
+    }
+    
+    if (titleLower.includes('art') || titleLower.includes('museum') || titleLower.includes('gallery') || 
+        titleLower.includes('exhibition') || titleLower.includes('theater') || titleLower.includes('culture')) {
+        return 'Arts';
+    }
+    
+    if (titleLower.includes('business') || titleLower.includes('networking') || titleLower.includes('tech') || 
+        titleLower.includes('startup') || titleLower.includes('conference') || titleLower.includes('meetup')) {
+        return 'Business';
+    }
+    
+    return 'Other';
+}
+
+// Recenter map to user location
+function recenterMap() {
+    if (!eventsMap) return;
+    
+    if (userLocation) {
+        eventsMap.setView([userLocation.lat, userLocation.lng], 13);
+    } else {
+        // Center on NYC if no user location
+        eventsMap.setView([40.7128, -74.0060], 12);
+    }
+}
+
+// Toggle fullscreen map
+function toggleFullscreen() {
+    const modal = document.getElementById('eventsMapModal');
+    const mapContainer = document.getElementById('eventsMap');
+    
+    if (!document.fullscreenElement) {
+        modal.requestFullscreen().then(() => {
+            // Refresh map size when entering fullscreen
+            setTimeout(() => {
+                if (eventsMap) {
+                    eventsMap.invalidateSize();
+                }
+            }, 100);
+        });
+    } else {
+        document.exitFullscreen();
+    }
+}
+
+// Show map error message
+function showMapError(message) {
+    const mapContainer = document.getElementById('eventsMap');
+    mapContainer.innerHTML = `
+        <div style="
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            flex-direction: column;
+            color: var(--text-light);
+            text-align: center;
+            padding: 20px;
+        ">
+            <i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 1rem; color: #f39c12;"></i>
+            <h3>Map Error</h3>
+            <p>${message}</p>
+            <button onclick="initializeEventsMap()" style="
+                margin-top: 1rem;
+                background: var(--gradient-blue-start);
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 6px;
+                cursor: pointer;
+            ">Try Again</button>
+        </div>
+    `;
+}
+
+// Handle modal close when clicking outside
+document.getElementById('eventsMapModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeEventsMap();
+    }
+});
+
+console.log('🗺️ Events map functionality loaded');
