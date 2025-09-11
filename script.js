@@ -2617,7 +2617,8 @@ async function fetchNearbyEventsFromSerpAPI(locationName) {
     try {
         console.log('🔍 Fetching nearby events via backend API for:', locationName);
         
-        // Call our backend API which has SerpAPI integration
+        // Call our backend API which has SerpAPI integration  
+        const API_BASE_URL = 'https://qk3jiyk1e8.execute-api.ap-south-1.amazonaws.com/prod';
         const response = await fetch(`${API_BASE_URL}/search-events`, {
             method: 'POST',
             headers: {
@@ -2665,6 +2666,7 @@ async function pollForMapResults(requestId, maxAttempts = 4) {
         try {
             console.log(`🔄 Polling attempt ${attempt}/${maxAttempts} for map results...`);
             
+            const API_BASE_URL = 'https://qk3jiyk1e8.execute-api.ap-south-1.amazonaws.com/prod';
             const response = await fetch(`${API_BASE_URL}/search-events?requestId=${requestId}`, {
                 headers: {
                     ...(isUserLoggedIn() ? { 'Authorization': `Bearer ${getToken()}` } : {})
