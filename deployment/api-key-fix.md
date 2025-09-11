@@ -25,10 +25,14 @@ Permitted models can be found in the documentation at https://docs.perplexity.ai
 ```
 Claude API call failed: Error: Claude API error: 401 Unauthorized
 ```
-**Fix**: Update Lambda environment variable
+**Fix**: Update Lambda environment variable AND model version
 ```
 ANTHROPIC_API_KEY = [your-valid-claude-key]
 ```
+
+**Also update Claude model in Lambda code:**
+- Change from: `claude-3-sonnet-20240229`
+- Change to: `claude-3-5-sonnet-20240620` (stable version)
 
 ### 4. Frontend Map Error
 ```
@@ -48,6 +52,16 @@ model: 'llama-3.1-sonar-small-128k-online',
 **Change to:**
 ```javascript
 model: 'sonar',
+```
+
+**For Claude model, find:**
+```javascript
+model: 'claude-3-sonnet-20240229',
+```
+
+**Change to:**
+```javascript
+model: 'claude-3-5-sonnet-20240620',
 ```
 
 ## Environment Variables to Set:
