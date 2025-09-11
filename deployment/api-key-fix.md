@@ -69,6 +69,7 @@ model: 'claude-3-5-sonnet-20240620',
 SERPAPI_KEY = [your-serpapi-key-from-earlier]
 PERPLEXITY_API_KEY = [your-perplexity-key-from-earlier]  
 ANTHROPIC_API_KEY = [your-claude-api-key]
+OPENAI_API_KEY = [your-openai-api-key]
 SEARCH_REQUESTS_TABLE = EventFinderSearchRequests
 USER_SEARCHES_TABLE = EventFinderUserSearches
 ```
@@ -76,9 +77,17 @@ USER_SEARCHES_TABLE = EventFinderUserSearches
 ## Expected Results After Fix:
 - ✅ SerpAPI should return real Google Events
 - ✅ If SerpAPI fails, Perplexity should work as fallback
-- ✅ Claude should process results properly  
+- ✅ Claude 3.5 Sonnet should process results properly
+- ✅ If Claude fails, OpenAI GPT-4 should work as backup
 - ✅ Map should call backend API successfully
 - ✅ Search results should appear normally
+
+## Complete Fallback Chain:
+1. **SerpAPI** (Google Events) → Real event data
+2. **Perplexity** (Web search) → Alternative event search  
+3. **Claude 3.5 Sonnet** (AI processing) → JSON formatting
+4. **OpenAI GPT-4** (AI backup) → Fallback JSON formatting
+5. **Generated Events** (Static fallback) → Always works
 
 ## Test After Fix:
 1. Try a search from the main form

@@ -9,6 +9,7 @@ const dynamoDB = DynamoDBDocumentClient.from(dynamoClient);
 // Environment variables for API keys (must be set in Lambda configuration)
 const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const SERPAPI_KEY = process.env.SERPAPI_KEY;
 
 const SEARCH_REQUESTS_TABLE = process.env.SEARCH_REQUESTS_TABLE || 'EventFinderSearchRequests';
@@ -75,15 +76,15 @@ exports.handler = async (event) => {
             }
         }
 
-        // Step 3: Process and structure results with Claude
-        console.log('🤖 Processing results with Claude AI...');
+        // Step 3: Process and structure results with AI (Claude first, OpenAI fallback)
+        console.log('🤖 Processing results with AI...');
         await updateSearchStatus(requestId, 'processing', {
             currentStep: 'Processing and formatting event data...'
         });
 
-        const structuredEvents = await processWithClaude(eventsData, searchParams);
+        const structuredEvents = await processWithAI(eventsData, searchParams);
         
-        console.log('✅ Claude processing completed');
+        console.log('✅ AI processing completed');
 
         // Step 4: Save to user search history
         console.log('💾 Saving search results...');
@@ -401,7 +402,36 @@ async function callPerplexityAPI(prompt) {
     }
 }
 
-// Process results with Claude 3.5 Sonnet (updated stable version)
+// Process results with AI (Claude first, OpenAI fallback)
+async function processWithAI(rawEventData, searchParams) {
+    // Try Claude first
+    try {
+        console.log('🔵 Trying Claude 3.5 Sonnet...');
+        return await processWithClaude(rawEventData, searchParams);
+    } catch (claudeError) {
+        console.error('🔴 Claude failed, trying OpenAI fallback:', claudeError.message);
+        
+        try {
+            console.log('🟢 Trying OpenAI GPT-4...');
+            return await processWithOpenAI(rawEventData, searchParams);
+        } catch (openaiError) {
+            console.error('🔴 Both Claude and OpenAI failed:', openaiError.message);
+            
+            // Return basic fallback structure
+            return [{
+                name: "Events Found",
+                description: "Search completed but AI processing failed. Raw data was found but could not be formatted.",
+                date: new Date().toISOString().split('T')[0],
+                location: searchParams.location || "Various locations",
+                price: "Varies",
+                source: "",
+                category: searchParams.activity_type || "Event"
+            }];
+        }
+    }
+}
+
+// Process results with Claude 3.5 Sonnet
 async function processWithClaude(rawEventData, searchParams) {
     try {
         const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -481,6 +511,94 @@ Requirements:
     } catch (error) {
         console.error('Claude API call failed:', error);
         throw new Error(`Failed to process events with Claude: ${error.message}`);
+    }
+}
+
+// Process results with OpenAI GPT-4 (fallback)
+async function processWithOpenAI(rawEventData, searchParams) {
+    try {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: 'gpt-4-turbo-preview',
+                messages: [
+                    {
+                        role: 'system',
+                        content: 'You are an expert event data processor. Parse event information into clean JSON format with accurate details.'
+                    },
+                    {
+                        role: 'user',
+                        content: `Parse this event data into a clean JSON array. Extract only real events with complete information:
+
+${rawEventData}
+
+Return ONLY a JSON array of events with this exact structure:
+[
+  {
+    "name": "Event Name",
+    "description": "Brief description",
+    "date": "YYYY-MM-DD or descriptive date",
+    "time": "Time if available",
+    "location": "Venue name and address",
+    "price": "Free, price, or price range",
+    "source": "Website URL if available",
+    "category": "${searchParams.activity_type || 'Event'}"
+  }
+]
+
+Requirements:
+- Only include events with names and locations
+- Format dates consistently
+- Include pricing information if available
+- Add website URLs when found
+- Limit to 10 best events
+- Return valid JSON only, no additional text`
+                    }
+                ],
+                max_tokens: 4000,
+                temperature: 0.1
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('OpenAI API response error:', response.status, response.statusText, errorText);
+            throw new Error(`OpenAI API error: ${response.status} ${response.statusText}. Details: ${errorText}`);
+        }
+
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content;
+
+        if (!content) {
+            throw new Error('No content received from OpenAI API');
+        }
+
+        // Parse JSON response
+        try {
+            const events = JSON.parse(content);
+            console.log('✅ OpenAI successfully processed events');
+            return Array.isArray(events) ? events : [];
+        } catch (parseError) {
+            console.error('Failed to parse OpenAI response as JSON:', parseError);
+            // Return a fallback event structure
+            return [{
+                name: "Events Found via OpenAI",
+                description: "Search completed with OpenAI but JSON parsing failed. Please try again.",
+                date: new Date().toISOString().split('T')[0],
+                location: searchParams.location || "Various locations",
+                price: "Varies",
+                source: "",
+                category: searchParams.activity_type || "Event"
+            }];
+        }
+
+    } catch (error) {
+        console.error('OpenAI API call failed:', error);
+        throw new Error(`Failed to process events with OpenAI: ${error.message}`);
     }
 }
 
