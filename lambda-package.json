@@ -1,0 +1,15 @@
+{
+  "name": "eventfinder-auth-lambdas",
+  "version": "1.0.0",
+  "description": "Authentication Lambda functions for EventFinder",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.x",
+    "@aws-sdk/lib-dynamodb": "^3.x",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

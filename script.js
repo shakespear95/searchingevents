@@ -1628,8 +1628,8 @@ eventForm.addEventListener("submit", async function (e) {
     // Close the modal after submission (good UX)
     searchModal.style.display = 'none';
 
-    // Use async search endpoints to avoid 504 timeout
-    const submitSearchUrl = `${AWS_API_BASE_URL}/submit-search`;
+    // Use existing search-events endpoint in async mode to avoid 504 timeout
+    const submitSearchUrl = `${AWS_API_BASE_URL}/search-events`;
 
     // Show loading overlay BEFORE sending the request
     showLoading();
@@ -1889,7 +1889,7 @@ async function startPollingForResults(requestId, originalSearchParams) {
         console.log(`Polling attempt ${pollCount}/${maxPollCount}`);
         
         try {
-            const getResultsUrl = `${AWS_API_BASE_URL}/get-results?requestId=${requestId}`;
+            const getResultsUrl = `${AWS_API_BASE_URL}/search-events?requestId=${requestId}`;
             const headers = { "Content-Type": "application/json" };
             
             // Add auth header if available
@@ -2090,7 +2090,7 @@ async function checkResultsManually(requestId) {
     console.log('Manual results check for requestId:', requestId);
     
     try {
-        const getResultsUrl = `${AWS_API_BASE_URL}/get-results?requestId=${requestId}`;
+        const getResultsUrl = `${AWS_API_BASE_URL}/search-events?requestId=${requestId}`;
         const headers = { "Content-Type": "application/json" };
         
         const jwtToken = getToken();
