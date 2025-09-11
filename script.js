@@ -46,6 +46,17 @@ const AWS_API_BASE_URL = "https://qk3jiyk1e8.execute-api.ap-south-1.amazonaws.co
 // Global variable to store current user ID for search history
 let currentUserId = null;
 
+// Authentication Configuration
+const AUTH_CONFIG = {
+    TOKEN_KEY: 'jwtToken',
+    REFRESH_TOKEN_KEY: 'refreshToken',
+    REMEMBER_ME_KEY: 'rememberMe',
+    TOKEN_EXPIRY_BUFFER: 5 * 60 * 1000, // 5 minutes before expiry
+    AUTO_REFRESH_INTERVAL: 10 * 60 * 1000, // Check every 10 minutes
+    SESSION_TIMEOUT: 24 * 60 * 60 * 1000, // 24 hours
+    REMEMBER_ME_DURATION: 30 * 24 * 60 * 60 * 1000 // 30 days
+};
+
 // Debug mobile menu elements - MOVED AFTER ALL DOM DECLARATIONS
 console.log('🔍 DEBUG: Checking all DOM elements...');
 console.log('Mobile menu elements found:', {
@@ -197,16 +208,31 @@ window.addEventListener('click', (event) => {
     }
 });
 
-// EMERGENCY FIX: Simple mobile menu toggle without complex logic
+// Enhanced Mobile Menu Toggle with Safari/iOS Support
 if (menuToggle && mobileMenu) {
-    console.log('✅ Setting up SIMPLE mobile menu toggle');
+    console.log('✅ Setting up enhanced mobile menu toggle with Safari support');
+    
+    function openMobileMenu(e) {
+        console.log('🎯 Menu toggle clicked!');
+        e.preventDefault();
+        e.stopPropagation();
+        mobileMenu.classList.add('open');
+        document.body.style.overflow = 'hidden'; // Prevent background scrolling
+    }
     
     try {
-        menuToggle.addEventListener('click', function() {
-            console.log('🎯 Menu toggle clicked!');
-            mobileMenu.classList.add('open');
-        });
-        console.log('✅ Event listener attached successfully');
+        // Standard click event
+        menuToggle.addEventListener('click', openMobileMenu);
+        
+        // iOS Safari touch events for better compatibility
+        menuToggle.addEventListener('touchstart', function(e) {
+            console.log('🎯 Menu toggle touched (iOS)!');
+            e.preventDefault();
+        }, { passive: false });
+        
+        menuToggle.addEventListener('touchend', openMobileMenu, { passive: false });
+        
+        console.log('✅ Event listeners attached successfully (with iOS support)');
     } catch (error) {
         console.error('❌ Error attaching event listener:', error);
     }
@@ -262,45 +288,473 @@ function hideLoading() {
 
 // --- Auth Related Functions ---
 
-function getToken() {
-    return localStorage.getItem('jwtToken');
-}
+// Enhanced Authentication Management System
+class AuthManager {
+    constructor() {
+        this.refreshTimer = null;
+        this.init();
+    }
 
-function setToken(token) {
-    localStorage.setItem('jwtToken', token);
-}
+    init() {
+        // Check for existing session on page load
+        this.validateSession();
+        // Start auto-refresh timer
+        this.startTokenRefreshTimer();
+    }
 
-function removeToken() {
-    localStorage.removeItem('jwtToken');
-}
+    // Token Management
+    getToken() {
+        return localStorage.getItem(AUTH_CONFIG.TOKEN_KEY) || sessionStorage.getItem(AUTH_CONFIG.TOKEN_KEY);
+    }
 
-function getUsernameFromToken(token) {
-    // This is a basic way to get username from JWT payload
-    // In production, validate JWT signature on backend before trusting payload
-    try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        return payload.username; // Assuming your JWT payload has a 'username' field
-    } catch (e) {
-        return 'User';
+    setToken(token, rememberMe = false) {
+        if (rememberMe) {
+            localStorage.setItem(AUTH_CONFIG.TOKEN_KEY, token);
+            localStorage.setItem(AUTH_CONFIG.REMEMBER_ME_KEY, 'true');
+        } else {
+            sessionStorage.setItem(AUTH_CONFIG.TOKEN_KEY, token);
+            localStorage.removeItem(AUTH_CONFIG.REMEMBER_ME_KEY);
+        }
+    }
+
+    getRefreshToken() {
+        return localStorage.getItem(AUTH_CONFIG.REFRESH_TOKEN_KEY);
+    }
+
+    setRefreshToken(refreshToken) {
+        if (refreshToken) {
+            localStorage.setItem(AUTH_CONFIG.REFRESH_TOKEN_KEY, refreshToken);
+        }
+    }
+
+    clearTokens() {
+        localStorage.removeItem(AUTH_CONFIG.TOKEN_KEY);
+        sessionStorage.removeItem(AUTH_CONFIG.TOKEN_KEY);
+        localStorage.removeItem(AUTH_CONFIG.REFRESH_TOKEN_KEY);
+        localStorage.removeItem(AUTH_CONFIG.REMEMBER_ME_KEY);
+        this.stopTokenRefreshTimer();
+    }
+
+    // JWT Token Validation and Parsing
+    parseToken(token) {
+        try {
+            if (!token) return null;
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            return payload;
+        } catch (error) {
+            console.error('Error parsing token:', error);
+            return null;
+        }
+    }
+
+    isTokenExpired(token) {
+        const payload = this.parseToken(token);
+        if (!payload || !payload.exp) return true;
+        
+        const now = Math.floor(Date.now() / 1000);
+        return payload.exp <= now;
+    }
+
+    getTokenTimeLeft(token) {
+        const payload = this.parseToken(token);
+        if (!payload || !payload.exp) return 0;
+        
+        const now = Math.floor(Date.now() / 1000);
+        return Math.max(0, payload.exp - now) * 1000; // Convert to milliseconds
+    }
+
+    needsRefresh(token) {
+        const timeLeft = this.getTokenTimeLeft(token);
+        return timeLeft > 0 && timeLeft < AUTH_CONFIG.TOKEN_EXPIRY_BUFFER;
+    }
+
+    getUsernameFromToken(token) {
+        const payload = this.parseToken(token);
+        return payload ? (payload.username || payload.sub || 'Unknown') : 'Unknown';
+    }
+
+    getUserIdFromToken(token) {
+        const payload = this.parseToken(token);
+        return payload ? (payload.userId || payload.username || payload.sub) : null;
+    }
+
+    // Session Management
+    isLoggedIn() {
+        const token = this.getToken();
+        return token && !this.isTokenExpired(token);
+    }
+
+    validateSession() {
+        const token = this.getToken();
+        if (!token) {
+            this.logout();
+            return false;
+        }
+
+        if (this.isTokenExpired(token)) {
+            console.log('Token expired, attempting refresh...');
+            this.attemptTokenRefresh();
+            return false;
+        }
+
+        if (this.needsRefresh(token)) {
+            console.log('Token needs refresh soon...');
+            this.attemptTokenRefresh();
+        }
+
+        return true;
+    }
+
+    // Token Refresh
+    async attemptTokenRefresh() {
+        const refreshToken = this.getRefreshToken();
+        if (!refreshToken) {
+            console.log('No refresh token available, logging out...');
+            this.logout();
+            return false;
+        }
+
+        try {
+            const response = await fetch(`${AWS_API_BASE_URL}/refresh-token`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ refreshToken })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.token) {
+                    const rememberMe = localStorage.getItem(AUTH_CONFIG.REMEMBER_ME_KEY) === 'true';
+                    this.setToken(data.token, rememberMe);
+                    if (data.refreshToken) {
+                        this.setRefreshToken(data.refreshToken);
+                    }
+                    console.log('Token refreshed successfully');
+                    this.updateAuthUI();
+                    return true;
+                }
+            }
+        } catch (error) {
+            console.error('Token refresh failed:', error);
+        }
+
+        console.log('Token refresh failed, logging out...');
+        this.logout();
+        return false;
+    }
+
+    startTokenRefreshTimer() {
+        this.stopTokenRefreshTimer();
+        this.refreshTimer = setInterval(() => {
+            if (this.isLoggedIn()) {
+                const token = this.getToken();
+                if (this.needsRefresh(token)) {
+                    this.attemptTokenRefresh();
+                }
+            }
+        }, AUTH_CONFIG.AUTO_REFRESH_INTERVAL);
+    }
+
+    stopTokenRefreshTimer() {
+        if (this.refreshTimer) {
+            clearInterval(this.refreshTimer);
+            this.refreshTimer = null;
+        }
+    }
+
+    // Authentication Actions
+    async login(credentials, rememberMe = false) {
+        try {
+            const response = await fetch(`${AWS_API_BASE_URL}/login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(credentials)
+            });
+
+            const data = await response.json();
+            
+            if (response.ok && data.token) {
+                this.setToken(data.token, rememberMe);
+                if (data.refreshToken) {
+                    this.setRefreshToken(data.refreshToken);
+                }
+                
+                currentUserId = this.getUserIdFromToken(data.token);
+                this.updateAuthUI();
+                this.startTokenRefreshTimer();
+                
+                return { success: true, data };
+            } else {
+                return { success: false, error: data.message || 'Login failed' };
+            }
+        } catch (error) {
+            console.error('Login error:', error);
+            return { success: false, error: 'Network error during login' };
+        }
+    }
+
+    logout() {
+        currentUserId = null;
+        this.clearTokens();
+        this.updateAuthUI();
+        
+        // Clear search history
+        if (searchHistoryTabs) {
+            searchHistoryTabs.innerHTML = '';
+        }
+        
+        console.log('User logged out');
+    }
+
+    // UI Updates
+    updateAuthUI() {
+        const token = this.getToken();
+        if (token && !this.isTokenExpired(token)) {
+            // User is logged in
+            authButtons.style.display = 'none';
+            userDropdown.style.display = 'list-item';
+            usernameDisplay.textContent = this.getUsernameFromToken(token);
+            
+            // Show search history if user is logged in
+            if (searchHistorySection) {
+                searchHistorySection.style.display = 'block';
+            }
+        } else {
+            // User is not logged in
+            authButtons.style.display = 'list-item';
+            userDropdown.style.display = 'none';
+            
+            // Hide search history if user is not logged in
+            if (searchHistorySection) {
+                searchHistorySection.style.display = 'none';
+            }
+        }
     }
 }
 
-function isUserLoggedIn() {
-    const token = getToken();
-    return !!token;
-}
+// Initialize AuthManager
+const authManager = new AuthManager();
 
-function updateAuthUI() {
-    const token = getToken();
-    if (token) {
-        authButtons.style.display = 'none';
-        userDropdown.style.display = 'list-item'; // or 'block' if not a list item
-        usernameDisplay.textContent = getUsernameFromToken(token);
-    } else {
-        authButtons.style.display = 'list-item'; // or 'block'
-        userDropdown.style.display = 'none';
+// Legacy function compatibility
+function getToken() { return authManager.getToken(); }
+function setToken(token) { authManager.setToken(token); }
+function removeToken() { authManager.clearTokens(); }
+function getUsernameFromToken(token) { return authManager.getUsernameFromToken(token); }
+function isUserLoggedIn() { return authManager.isLoggedIn(); }
+function updateAuthUI() { authManager.updateAuthUI(); }
+
+// Enhanced Authentication UI Functionality
+class AuthUI {
+    constructor() {
+        this.passwordStrengthElements = {
+            strengthFill: document.getElementById('strengthFill'),
+            strengthText: document.getElementById('strengthText'),
+            requirements: {
+                length: document.getElementById('req-length'),
+                upper: document.getElementById('req-upper'),
+                lower: document.getElementById('req-lower'),
+                number: document.getElementById('req-number'),
+                special: document.getElementById('req-special')
+            }
+        };
+        
+        this.initPasswordToggles();
+        this.initPasswordStrengthValidation();
+        this.initFormValidation();
+    }
+
+    // Password Visibility Toggle
+    initPasswordToggles() {
+        const toggles = [
+            { button: 'loginPasswordToggle', input: 'loginPassword' },
+            { button: 'signupPasswordToggle', input: 'signupPassword' },
+            { button: 'confirmPasswordToggle', input: 'confirmPassword' }
+        ];
+
+        toggles.forEach(({ button, input }) => {
+            const toggleBtn = document.getElementById(button);
+            const inputField = document.getElementById(input);
+            
+            if (toggleBtn && inputField) {
+                toggleBtn.addEventListener('click', () => {
+                    const isPassword = inputField.type === 'password';
+                    inputField.type = isPassword ? 'text' : 'password';
+                    toggleBtn.innerHTML = isPassword 
+                        ? '<i class="fas fa-eye-slash"></i>' 
+                        : '<i class="fas fa-eye"></i>';
+                });
+            }
+        });
+    }
+
+    // Password Strength Validation
+    initPasswordStrengthValidation() {
+        const passwordField = document.getElementById('signupPassword');
+        if (!passwordField) return;
+
+        passwordField.addEventListener('input', (e) => {
+            this.validatePasswordStrength(e.target.value);
+        });
+    }
+
+    validatePasswordStrength(password) {
+        const requirements = {
+            length: password.length >= 8,
+            upper: /[A-Z]/.test(password),
+            lower: /[a-z]/.test(password),
+            number: /\d/.test(password),
+            special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)
+        };
+
+        // Update requirement indicators
+        Object.keys(requirements).forEach(req => {
+            const element = this.passwordStrengthElements.requirements[req];
+            if (element) {
+                if (requirements[req]) {
+                    element.classList.add('met');
+                    element.querySelector('i').className = 'fas fa-check';
+                } else {
+                    element.classList.remove('met');
+                    element.querySelector('i').className = 'fas fa-times';
+                }
+            }
+        });
+
+        // Calculate strength score
+        const score = Object.values(requirements).filter(Boolean).length;
+        const strengthClasses = ['', 'weak', 'fair', 'good', 'strong'];
+        const strengthTexts = ['', 'Weak password', 'Fair password', 'Good password', 'Strong password'];
+        
+        const strengthClass = strengthClasses[score] || '';
+        const strengthText = strengthTexts[score] || 'Password strength';
+
+        // Update strength bar
+        if (this.passwordStrengthElements.strengthFill) {
+            this.passwordStrengthElements.strengthFill.className = `strength-fill ${strengthClass}`;
+        }
+        
+        if (this.passwordStrengthElements.strengthText) {
+            this.passwordStrengthElements.strengthText.textContent = strengthText;
+        }
+
+        return { score, requirements };
+    }
+
+    // Form Validation
+    initFormValidation() {
+        // Username validation
+        const usernameField = document.getElementById('signupUsername');
+        if (usernameField) {
+            usernameField.addEventListener('blur', () => {
+                this.validateUsername(usernameField.value);
+            });
+        }
+
+        // Email validation
+        const emailField = document.getElementById('signupEmail');
+        if (emailField) {
+            emailField.addEventListener('blur', () => {
+                this.validateEmail(emailField.value);
+            });
+        }
+
+        // Confirm password validation
+        const confirmPasswordField = document.getElementById('confirmPassword');
+        const signupPasswordField = document.getElementById('signupPassword');
+        
+        if (confirmPasswordField && signupPasswordField) {
+            const validatePasswordMatch = () => {
+                this.validatePasswordMatch(signupPasswordField.value, confirmPasswordField.value);
+            };
+            
+            confirmPasswordField.addEventListener('input', validatePasswordMatch);
+            signupPasswordField.addEventListener('input', validatePasswordMatch);
+        }
+    }
+
+    validateUsername(username) {
+        const feedback = document.getElementById('usernameFeedback');
+        if (!feedback) return;
+
+        if (username.length < 3) {
+            this.showFieldFeedback(feedback, 'Username must be at least 3 characters long', 'error');
+            return false;
+        }
+        
+        if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+            this.showFieldFeedback(feedback, 'Username can only contain letters, numbers, and underscores', 'error');
+            return false;
+        }
+
+        this.showFieldFeedback(feedback, 'Username looks good!', 'success');
+        return true;
+    }
+
+    validateEmail(email) {
+        const feedback = document.getElementById('emailFeedback');
+        if (!feedback) return;
+
+        if (!email) {
+            this.showFieldFeedback(feedback, '', '');
+            return true; // Email is optional
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            this.showFieldFeedback(feedback, 'Please enter a valid email address', 'error');
+            return false;
+        }
+
+        this.showFieldFeedback(feedback, 'Email looks good!', 'success');
+        return true;
+    }
+
+    validatePasswordMatch(password, confirmPassword) {
+        const feedback = document.getElementById('confirmPasswordFeedback');
+        if (!feedback) return;
+
+        if (!confirmPassword) {
+            this.showFieldFeedback(feedback, '', '');
+            return;
+        }
+
+        if (password !== confirmPassword) {
+            this.showFieldFeedback(feedback, 'Passwords do not match', 'error');
+            return false;
+        }
+
+        this.showFieldFeedback(feedback, 'Passwords match!', 'success');
+        return true;
+    }
+
+    showFieldFeedback(element, message, type) {
+        element.textContent = message;
+        element.className = `field-feedback ${type}`;
+    }
+
+    // Form submission helpers
+    setButtonLoading(button, loading) {
+        const btnText = button.querySelector('.btn-text');
+        const btnLoader = button.querySelector('.btn-loader');
+        
+        if (loading) {
+            button.disabled = true;
+            if (btnText) btnText.style.display = 'none';
+            if (btnLoader) btnLoader.style.display = 'inline';
+        } else {
+            button.disabled = false;
+            if (btnText) btnText.style.display = 'inline';
+            if (btnLoader) btnLoader.style.display = 'none';
+        }
     }
 }
+
+// Initialize Enhanced Auth UI
+const authUI = new AuthUI();
 
 async function handleAuthResponse(response) {
     const data = await response.json();
@@ -486,12 +940,8 @@ showLoginLink.addEventListener('click', (e) => {
 });
 
 logoutBtn.addEventListener('click', () => {
-    removeToken();
-    currentUserId = null; // Clear current user ID
-    updateAuthUI();
-    
-    // Hide search history section on logout
-    searchHistorySection.style.display = 'none';
+    // Use the enhanced AuthManager logout
+    authManager.logout();
     
     // Clear search results
     resultsDiv.innerHTML = '<p class="no-results-message">Your search results will appear here.</p>';
@@ -502,43 +952,55 @@ logoutBtn.addEventListener('click', () => {
 
 loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    authMessage.textContent = 'Logging in...';
+    
+    const submitButton = e.target.querySelector('.submit-btn');
+    const username = e.target.loginUsername.value.trim();
+    const password = e.target.loginPassword.value;
+    const rememberMe = e.target.rememberMe.checked;
+
+    // Clear previous messages
+    authMessage.textContent = '';
     authMessage.style.color = 'white';
 
-    const username = e.target.loginUsername.value;
-    const password = e.target.loginPassword.value;
+    // Show loading state
+    authUI.setButtonLoading(submitButton, true);
+    authMessage.textContent = 'Logging in...';
 
     // Debug logging
     console.log('Login attempt:', { 
         username, 
         passwordLength: password.length,
+        rememberMe,
         endpoint: `${AWS_API_BASE_URL}/login`
     });
 
     try {
-        const response = await fetch(`${AWS_API_BASE_URL}/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
-        });
+        const result = await authManager.login({ username, password }, rememberMe);
         
-        console.log('Login response status:', response.status);
-        
-        // Log response details
-        const responseClone = response.clone();
-        try {
-            const responseJson = await responseClone.json();
-            console.log('Login response JSON:', responseJson);
-        } catch (jsonError) {
-            const responseText = await responseClone.text();
-            console.log('Login response body (raw):', responseText);
+        if (result.success) {
+            authMessage.style.color = 'green';
+            authMessage.textContent = 'Login successful!';
+            
+            // Load search history after successful login
+            if (typeof loadSearchHistory === 'function') {
+                loadSearchHistory();
+            }
+            
+            // Close modal after short delay
+            setTimeout(() => {
+                loginSignupModal.style.display = 'none';
+                authMessage.textContent = '';
+            }, 1000);
+        } else {
+            authMessage.style.color = 'red';
+            authMessage.textContent = result.error || 'Login failed. Please try again.';
         }
-        
-        await handleAuthResponse(response);
     } catch (error) {
         console.error('Login error:', error);
-        authMessage.textContent = 'Network error during login.';
         authMessage.style.color = 'red';
+        authMessage.textContent = 'Network error. Please check your connection and try again.';
+    } finally {
+        authUI.setButtonLoading(submitButton, false);
     }
 });
 
@@ -675,6 +1137,7 @@ function setupFieldValidation() {
 signupForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     
+    const submitButton = e.target.querySelector('.submit-btn');
     const username = e.target.signupUsername.value.trim();
     const email = e.target.signupEmail.value.trim().toLowerCase();
     const password = e.target.signupPassword.value;
@@ -682,46 +1145,29 @@ signupForm.addEventListener('submit', async (e) => {
 
     // Clear previous messages
     authMessage.textContent = '';
-
-    // Frontend validation checks
-    if (!username) {
-        showValidationError('Username is required');
-        return;
-    }
-
-    if (!isValidUsername(username)) {
-        showValidationError('Username must be 3-20 characters long and contain only letters, numbers, and underscores');
-        return;
-    }
-
-    if (!email) {
-        showValidationError('Email address is required');
-        return;
-    }
-
-    if (!isValidEmail(email)) {
-        showValidationError('Please enter a valid email address (e.g., user@example.com)');
-        return;
-    }
-
-    if (!password) {
-        showValidationError('Password is required');
-        return;
-    }
-
-    if (!isValidPassword(password)) {
-        showValidationError('Password must be at least 8 characters long');
-        return;
-    }
-
-    if (password !== confirmPassword) {
-        showValidationError('Passwords do not match!');
-        return;
-    }
-
-    // All validations passed - proceed with registration
-    authMessage.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating your account...';
     authMessage.style.color = 'white';
+
+    // Enhanced frontend validation
+    const usernameValid = authUI.validateUsername(username);
+    const emailValid = authUI.validateEmail(email);
+    const passwordMatch = authUI.validatePasswordMatch(password, confirmPassword);
+    const passwordStrength = authUI.validatePasswordStrength(password);
+
+    if (!usernameValid || !emailValid || !passwordMatch) {
+        authMessage.style.color = 'red';
+        authMessage.textContent = 'Please fix the validation errors above.';
+        return;
+    }
+
+    if (passwordStrength.score < 3) {
+        authMessage.style.color = 'red';
+        authMessage.textContent = 'Password must be stronger. Please meet more requirements.';
+        return;
+    }
+
+    // Show loading state
+    authUI.setButtonLoading(submitButton, true);
+    authMessage.textContent = 'Creating your account...';
 
     try {
         const response = await fetch(`${AWS_API_BASE_URL}/register`, {
@@ -729,12 +1175,218 @@ signupForm.addEventListener('submit', async (e) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, email, password })
         });
-        await handleAuthResponse(response);
+
+        const data = await response.json();
+        
+        if (response.ok) {
+            if (data.requiresVerification) {
+                // Account created but needs email verification
+                authMessage.style.color = 'green';
+                authMessage.innerHTML = `
+                    <div style="text-align: left;">
+                        <i class="fas fa-check-circle" style="color: green;"></i> 
+                        <strong>Account created successfully!</strong><br>
+                        <small>📧 Please check your email and click the verification link to complete registration.</small><br>
+                        <small>💡 Check your spam folder if you don't see the email within a few minutes.</small>
+                    </div>
+                `;
+                
+                // Switch to login form after delay
+                setTimeout(() => {
+                    showLogin();
+                    authMessage.textContent = 'Please verify your email, then login.';
+                    authMessage.style.color = 'blue';
+                }, 3000);
+            } else if (data.token) {
+                // Direct login (no verification required)
+                const rememberMe = false; // Default for new signups
+                authManager.setToken(data.token, rememberMe);
+                if (data.refreshToken) {
+                    authManager.setRefreshToken(data.refreshToken);
+                }
+                
+                currentUserId = authManager.getUserIdFromToken(data.token);
+                authManager.updateAuthUI();
+                
+                authMessage.style.color = 'green';
+                authMessage.textContent = 'Account created and logged in successfully!';
+                
+                setTimeout(() => {
+                    loginSignupModal.style.display = 'none';
+                    authMessage.textContent = '';
+                }, 1500);
+            }
+        } else {
+            // Handle registration errors
+            authMessage.style.color = 'red';
+            authMessage.textContent = data.message || 'Registration failed. Please try again.';
+        }
     } catch (error) {
         console.error('Signup error:', error);
-        showValidationError('Network error during signup. Please try again.');
-    }
+        authMessage.style.color = 'red';
+        authMessage.textContent = 'Network error. Please check your connection and try again.';
+    } finally {
+        authUI.setButtonLoading(submitButton, false);
 });
+
+// Forgot Password Handler
+document.getElementById('forgotPasswordLink')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    authMessage.style.color = 'blue';
+    authMessage.innerHTML = `
+        <div style="text-align: left;">
+            <i class="fas fa-info-circle" style="color: blue;"></i> 
+            <strong>Password Reset</strong><br>
+            <small>Please contact support to reset your password.</small><br>
+            <small>Email: takudzwasamu@gmail.com</small>
+        </div>
+    `;
+});
+
+// Email Verification Handling
+class VerificationHandler {
+    constructor() {
+        this.verificationModal = document.getElementById('verificationModal');
+        this.verificationTitle = document.getElementById('verificationTitle');
+        this.verificationMessage = document.getElementById('verificationMessage');
+        this.proceedToLoginBtn = document.getElementById('proceedToLogin');
+        this.closeVerificationModalBtn = document.getElementById('closeVerificationModalBtn');
+        
+        this.init();
+    }
+    
+    init() {
+        // Check for verification parameters in URL
+        this.checkVerificationParams();
+        
+        // Setup event listeners
+        if (this.proceedToLoginBtn) {
+            this.proceedToLoginBtn.addEventListener('click', () => {
+                this.showLoginForm();
+            });
+        }
+        
+        if (this.closeVerificationModalBtn) {
+            this.closeVerificationModalBtn.addEventListener('click', () => {
+                this.closeVerificationModal();
+            });
+        }
+    }
+    
+    checkVerificationParams() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        const verified = urlParams.get('verified');
+        const error = urlParams.get('error');
+        
+        if (token || verified || error) {
+            this.handleVerificationResult(token, verified, error);
+        }
+    }
+    
+    async handleVerificationResult(token, verified, error) {
+        if (error) {
+            this.showVerificationError(error);
+            return;
+        }
+        
+        if (verified === 'true') {
+            this.showVerificationSuccess();
+            return;
+        }
+        
+        if (token) {
+            // Verify the token with backend
+            await this.verifyEmailToken(token);
+        }
+    }
+    
+    async verifyEmailToken(token) {
+        try {
+            const response = await fetch(`${AWS_API_BASE_URL}/verify-email`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                this.showVerificationSuccess();
+            } else {
+                this.showVerificationError(data.message || 'Verification failed');
+            }
+        } catch (error) {
+            console.error('Verification error:', error);
+            this.showVerificationError('Network error during verification');
+        }
+    }
+    
+    showVerificationSuccess() {
+        this.verificationTitle.textContent = 'Email Verified!';
+        this.verificationTitle.style.color = '#4CAF50';
+        this.verificationMessage.textContent = 'Your email has been successfully verified. You can now login to your account.';
+        
+        const iconElement = this.verificationModal.querySelector('.verification-icon i');
+        if (iconElement) {
+            iconElement.className = 'fas fa-check-circle';
+            iconElement.style.color = '#4CAF50';
+        }
+        
+        this.verificationModal.style.display = 'flex';
+        
+        // Clear URL parameters
+        this.clearURLParams();
+    }
+    
+    showVerificationError(errorMessage) {
+        this.verificationTitle.textContent = 'Verification Failed';
+        this.verificationTitle.style.color = '#f44336';
+        this.verificationMessage.textContent = errorMessage || 'The verification link is invalid or has expired. Please request a new verification email.';
+        
+        const iconElement = this.verificationModal.querySelector('.verification-icon i');
+        if (iconElement) {
+            iconElement.className = 'fas fa-times-circle';
+            iconElement.style.color = '#f44336';
+        }
+        
+        // Change button text
+        this.proceedToLoginBtn.innerHTML = '<i class="fas fa-envelope"></i> Request New Verification';
+        
+        this.verificationModal.style.display = 'flex';
+        
+        // Clear URL parameters
+        this.clearURLParams();
+    }
+    
+    showLoginForm() {
+        this.closeVerificationModal();
+        
+        // Show login form
+        if (loginSignupModal) {
+            loginSignupModal.style.display = 'flex';
+            showLogin();
+        }
+    }
+    
+    closeVerificationModal() {
+        if (this.verificationModal) {
+            this.verificationModal.style.display = 'none';
+        }
+    }
+    
+    clearURLParams() {
+        // Clear verification parameters from URL without refreshing
+        const url = new URL(window.location);
+        url.searchParams.delete('token');
+        url.searchParams.delete('verified');
+        url.searchParams.delete('error');
+        window.history.replaceState({}, document.title, url.toString());
+    }
+}
+
+// Initialize Verification Handler
+const verificationHandler = new VerificationHandler();
 
 // --- Search Submission Success Functions ---
 
