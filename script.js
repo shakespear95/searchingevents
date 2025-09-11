@@ -1628,8 +1628,8 @@ eventForm.addEventListener("submit", async function (e) {
     // Close the modal after submission (good UX)
     searchModal.style.display = 'none';
 
-    // TEMPORARY: Use existing endpoint until async deployment complete
-    const submitSearchUrl = `${AWS_API_BASE_URL}/search-events`;
+    // Use async search endpoints to avoid 504 timeout
+    const submitSearchUrl = `${AWS_API_BASE_URL}/submit-search`;
 
     // Show loading overlay BEFORE sending the request
     showLoading();
