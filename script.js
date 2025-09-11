@@ -1169,6 +1169,7 @@ signupForm.addEventListener('submit', async (e) => {
         authMessage.textContent = 'Network error. Please check your connection and try again.';
     } finally {
         authUI.setButtonLoading(submitButton, false);
+    }
 });
 
 // Forgot Password Handler
