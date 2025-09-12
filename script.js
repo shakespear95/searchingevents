@@ -1350,9 +1350,12 @@ function displayCompletedSearchResults(events, searchParams) {
             <p class="results-count">Found ${events.length} event${events.length !== 1 ? 's' : ''}</p>
         </div>
         <div class="events-grid" id="searchResultsGrid">
-            ${renderEventCards(events)}
         </div>
     `;
+    
+    // Use renderEventCards function properly with the grid container
+    const eventsGrid = document.getElementById('searchResultsGrid');
+    renderEventCards(eventsGrid, events, "No events found for your search criteria.");
 }
 
 function showSearchSubmissionSuccess(searchParams) {
