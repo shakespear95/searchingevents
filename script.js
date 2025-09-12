@@ -2615,9 +2615,13 @@ async function getReverseGeocodedLocation(lat, lng) {
 // Fetch real nearby events from backend API (SerpAPI integration)
 async function fetchNearbyEventsFromSerpAPI(locationName) {
     try {
-        console.log('🔍 Fetching nearby events via backend API for:', locationName);
+        console.log('🔍 Map events: Using fallback events while endpoints are being configured');
         
-        // Call our backend API which has SerpAPI integration  
+        // Temporarily skip backend call to avoid 504 timeout
+        // Will re-enable once async endpoints are properly configured
+        throw new Error('Using fallback events for map functionality');
+        
+        /* DISABLED TEMPORARILY - RE-ENABLE AFTER ASYNC SETUP
         const API_BASE_URL = 'https://qk3jiyk1e8.execute-api.ap-south-1.amazonaws.com/prod';
         const response = await fetch(`${API_BASE_URL}/search-events`, {
             method: 'POST',
@@ -2653,9 +2657,10 @@ async function fetchNearbyEventsFromSerpAPI(locationName) {
             console.log('⚠️ Backend API did not return expected format');
             return [];
         }
+        END OF DISABLED CODE */
         
     } catch (error) {
-        console.error('❌ Backend API request failed:', error);
+        console.error('❌ Map API temporarily disabled:', error);
         return [];
     }
 }
