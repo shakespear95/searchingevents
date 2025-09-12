@@ -1763,7 +1763,7 @@ eventForm.addEventListener("submit", async function (e) {
                 // Store in localStorage for the results page
                 localStorage.setItem('latestSearchResults', JSON.stringify(searchResults));
                 
-                showSearchSubmissionSuccess(data.searchParams, cleanedEvents);
+                displayCompletedSearchResults(cleanedEvents, data.searchParams);
             } else {
                 console.log('No events received from direct response, showing no results message');
                 showNoEventsFound(data.searchParams);
@@ -2150,7 +2150,7 @@ async function checkResultsManually(requestId) {
             };
             
             localStorage.setItem('latestSearchResults', JSON.stringify(searchResults));
-            showSearchSubmissionSuccess({}, cleanedEvents);
+            displayCompletedSearchResults(cleanedEvents, {});
             
         } else if (result.status === 'processing') {
             alert('Search is still processing. Please wait a bit longer.');
