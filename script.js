@@ -1333,6 +1333,28 @@ const verificationHandler = new VerificationHandler();
 
 // --- Search Submission Success Functions ---
 
+// Display completed search results inline
+function displayCompletedSearchResults(events, searchParams) {
+    const location = searchParams.location || 'Any location';
+    const activityType = searchParams.activity_type || 'Any activity';
+    const timeframe = searchParams.timeframe || 'Any time';
+    
+    hideLoading();
+    
+    resultsDiv.innerHTML = `
+        <div class="search-results-header">
+            <h2><i class="fas fa-calendar-check"></i> Search Results</h2>
+            <p class="search-summary">
+                <strong>${activityType}</strong> events in <strong>${location}</strong> - <strong>${timeframe}</strong>
+            </p>
+            <p class="results-count">Found ${events.length} event${events.length !== 1 ? 's' : ''}</p>
+        </div>
+        <div class="events-grid" id="searchResultsGrid">
+            ${renderEventCards(events)}
+        </div>
+    `;
+}
+
 function showSearchSubmissionSuccess(searchParams) {
     const location = searchParams.location || 'Any location';
     const activityType = searchParams.activity_type || 'Any activity';
@@ -1962,8 +1984,8 @@ async function startPollingForResults(requestId, originalSearchParams) {
                     // Store in localStorage
                     localStorage.setItem('latestSearchResults', JSON.stringify(searchResults));
                     
-                    // Show success message
-                    showSearchSubmissionSuccess(originalSearchParams, cleanedEvents);
+                    // Display results directly inline
+                    displayCompletedSearchResults(cleanedEvents, originalSearchParams);
                     
                 } else {
                     // No events found
