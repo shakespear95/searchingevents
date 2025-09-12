@@ -79,9 +79,17 @@ window.debugTest = function() {
 
 // --- Helper function to render event cards (REUSABLE) ---
 function renderEventCards(containerElement, eventsData, messageIfEmpty) {
+    console.log('🎯 renderEventCards called with:', {
+        container: containerElement,
+        eventsData: eventsData,
+        messageIfEmpty: messageIfEmpty
+    });
+    
     if (eventsData && eventsData.length > 0) {
+        console.log('✅ Events data is valid, rendering', eventsData.length, 'events');
         let eventsHtml = '';
-        eventsData.forEach(event => {
+        eventsData.forEach((event, index) => {
+            console.log(`🎪 Rendering event ${index + 1}:`, event);
             eventsHtml += `
                 <div class="event-card">
                     <h4>${event.name || 'Untitled Event'}</h4>
@@ -93,8 +101,11 @@ function renderEventCards(containerElement, eventsData, messageIfEmpty) {
                 </div>
             `;
         });
+        console.log('🎨 Generated HTML:', eventsHtml);
         containerElement.innerHTML = eventsHtml;
+        console.log('✅ HTML applied to container');
     } else {
+        console.log('❌ No events data, showing empty message');
         containerElement.innerHTML = `<p class="no-results-message">${messageIfEmpty}</p>`;
     }
 }
@@ -1355,6 +1366,16 @@ function displayCompletedSearchResults(events, searchParams) {
     
     // Use renderEventCards function properly with the grid container
     const eventsGrid = document.getElementById('searchResultsGrid');
+    
+    // Debug: Log events data to console
+    console.log('🔍 Events data for rendering:', events);
+    console.log('🔍 Events grid element:', eventsGrid);
+    console.log('🔍 Events array length:', events?.length);
+    
+    if (events && events.length > 0) {
+        console.log('🔍 First event sample:', events[0]);
+    }
+    
     renderEventCards(eventsGrid, events, "No events found for your search criteria.");
 }
 
