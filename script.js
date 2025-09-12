@@ -90,14 +90,71 @@ function renderEventCards(containerElement, eventsData, messageIfEmpty) {
         let eventsHtml = '';
         eventsData.forEach((event, index) => {
             console.log(`🎪 Rendering event ${index + 1}:`, event);
+            
+            // Determine category class for color theming
+            const category = (event.category || 'music').toLowerCase();
+            const categoryClass = `category-${category}`;
+            
+            // Clean and format the price
+            let priceDisplay = event.price || 'Free / N/A';
+            if (priceDisplay.toLowerCase().includes('free')) {
+                priceDisplay = 'Free';
+            }
+            
             eventsHtml += `
-                <div class="event-card">
+                <div class="event-card ${categoryClass}">
                     <h4>${event.name || 'Untitled Event'}</h4>
-                    <p><strong>Description:</strong> ${event.description || 'No description available.'}</p>
-                    <p><strong>Date & Time:</strong> ${event.date || 'To be announced'}</p>
-                    <p><strong>Location:</strong> ${event.location || 'Online/Various'}</p>
-                    <p><strong>Price:</strong> ${event.price || 'Free / N/A'}</p>
-                    ${event.source ? `<p><strong>Source:</strong> <a href="${event.source}" target="_blank" rel="noopener noreferrer">${event.source}</a></p>` : ''}
+                    
+                    <div class="event-card-content">
+                        <div class="event-detail">
+                            <div class="event-detail-icon">
+                                <i class="fas fa-align-left"></i>
+                            </div>
+                            <div class="event-detail-content">
+                                <strong>Description</strong>
+                                <div class="event-detail-text">${event.description || 'No description available.'}</div>
+                            </div>
+                        </div>
+                        
+                        <div class="event-detail">
+                            <div class="event-detail-icon">
+                                <i class="fas fa-calendar-alt"></i>
+                            </div>
+                            <div class="event-detail-content">
+                                <strong>Date & Time</strong>
+                                <div class="event-detail-text">${event.date || 'To be announced'}</div>
+                            </div>
+                        </div>
+                        
+                        <div class="event-detail">
+                            <div class="event-detail-icon">
+                                <i class="fas fa-map-marker-alt"></i>
+                            </div>
+                            <div class="event-detail-content">
+                                <strong>Location</strong>
+                                <div class="event-detail-text">${event.location || 'Online/Various'}</div>
+                            </div>
+                        </div>
+                        
+                        <div class="event-detail">
+                            <div class="event-detail-icon">
+                                <i class="fas fa-tag"></i>
+                            </div>
+                            <div class="event-detail-content">
+                                <strong>Price</strong>
+                                <div class="event-price">${priceDisplay}</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    ${event.source ? `
+                        <div class="event-card-footer">
+                            <a href="${event.source}" target="_blank" rel="noopener noreferrer" class="event-ticket-btn">
+                                <i class="fas fa-ticket-alt"></i>
+                                Get Tickets
+                            </a>
+                        </div>
+                    ` : ''}
                 </div>
             `;
         });
